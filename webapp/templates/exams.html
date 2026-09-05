@@ -1,0 +1,1404 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>考试中心 - OJ 调试平台</title>
+    <link rel="stylesheet" href="{{ static_url('style.css') }}">
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-inner">
+            <div class="topbar-title">
+                <span class="topbar-title-icon">&#128187;</span>
+                <span>OJ 调试平台</span>
+            </div>
+            <div class="topbar-info" id="topUserArea">
+                <span class="topbar-tag">{% if current_user and current_user.is_admin %}考试中心控制台{% else %}我的考试{% endif %}</span>
+                <span id="topStatusBox"></span>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="page-subheader">
+            <div class="subh-breadcrumb">
+                <a href="/">&#127968; 判题首页</a>
+                <span>&rsaquo;</span>
+                <span class="subh-cur">📝 {% if current_user and current_user.is_admin %}考试中心{% else %}我的考试{% endif %}</span>
+            </div>
+            <div class="subh-pill-group">
+                <a href="/submissions" class="subh-pill">📋 {% if current_user and current_user.is_admin %}提交日志{% else %}我的提交{% endif %}</a>
+                <a href="/classes" class="subh-pill">🎓 {% if current_user and current_user.is_admin %}班级管理{% else %}我的班级{% endif %}</a>
+                <a href="/assignments" class="subh-pill">📚 {% if current_user and current_user.is_admin %}作业中心{% else %}我的作业{% endif %}</a>
+                <a href="/exams" class="subh-pill active-subh">📝 {% if current_user and current_user.is_admin %}考试中心{% else %}我的考试{% endif %}</a>
+                {% if current_user and current_user.is_admin %}
+                <a href="/problems" class="subh-pill">🗂 题目管理</a>
+                <a href="/users" class="subh-pill">👥 用户管理</a>
+                {% endif %}
+            </div>
+        </div>
+
+        <section class="card">
+            <div class="card-header">
+                <div class="card-title">
+                    <span class="card-title-dot"></span>
+                    <span>📝 {% if current_user and current_user.is_admin %}考试列表（管理）{% else %}我的考试{% endif %}</span>
+                </div>
+                <div style="font-size:12.5px;color:#999;">
+                    共 <span id="totalCount" style="font-weight:600;color:#e53935;">0</span> 场考试
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="admin-toolbar">
+                    <div class="toolbar-left">
+                        <input type="text" id="keywordInput" class="form-input"
+                               placeholder="&#128269; {% if current_user and current_user.is_admin %}按考试标题搜索（模糊匹配）{% else %}搜索考试名称...{% endif %}"
+                               style="width:360px;">
+                        <button id="searchBtn" class="btn btn-accent btn-sm" type="button">
+                            &#128269; 搜索
+                        </button>
+                        <button id="resetSearchBtn" class="btn btn-secondary btn-sm" type="button">
+                            &#8634; 重置
+                        </button>
+                    </div>
+                    <div class="toolbar-right" id="adminToolbarRight">
+                        <button id="refreshBtn" class="btn btn-sm" type="button"
+                                style="background:#f5f5f5;color:#555;">
+                            &#128260; 刷新
+                        </button>
+                        {% if current_user and current_user.is_admin %}
+                        &nbsp;
+                        <button id="newExamBtn" class="btn btn-primary btn-sm" type="button">
+                            &#43; 新建考试
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div id="examListWrap" style="margin-top:16px;">
+                    <div style="text-align:center;padding:40px;color:#999;">
+                        <div style="font-size:36px;margin-bottom:8px;">&#9203;</div>
+                        正在加载考试列表...
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer>
+            &copy; OJ 在线判题平台
+        </footer>
+    </main>
+
+    <!-- ============ 考试编辑弹窗 ============ -->
+    <div id="examModalMask" class="modal-mask" style="display:none;">
+        <div class="modal-card" style="max-width:920px;">
+            <div class="modal-header">
+                <div class="modal-title" id="examModalTitle">新建考试</div>
+                <button class="modal-close" id="examCloseBtn" type="button">&times;</button>
+            </div>
+            <div class="modal-body" style="max-height:75vh;overflow-y:auto;padding-bottom:20px;">
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label>考试标题 <span style="color:#e53935;">*</span></label>
+                        <input type="text" id="e_title" class="form-input" placeholder="如：期中模拟考试 - 数据结构">
+                    </div>
+                    <div class="form-group">
+                        <label>考试模式 Mode <span style="color:#e53935;">*</span></label>
+                        <select id="e_mode" class="form-input">
+                            <option value="1">练习模式（不限次数，立即显示结果）</option>
+                            <option value="2" selected>模拟考试（计时，结束后显示成绩）</option>
+                            <option value="3">正式竞赛（防作弊，严格计时）</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label>所属班级 <span style="color:#e53935;">*</span></label>
+                        <select id="e_class_id" class="form-input">
+                            <option value="">-- 请选择班级 --</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>考试总时长 (分钟)</label>
+                        <input type="number" id="e_duration" class="form-input" min="1" step="1" value="120">
+                    </div>
+                </div>
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label>开始时间 <span style="color:#e53935;">*</span></label>
+                        <input type="datetime-local" id="e_start_time" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label>结束时间 <span style="color:#e53935;">*</span></label>
+                        <input type="datetime-local" id="e_end_time" class="form-input">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>考试说明 / 注意事项</label>
+                    <textarea id="e_description" class="form-textarea" style="height:70px;"
+                              placeholder="可选，考试规则、注意事项等"></textarea>
+                </div>
+
+                <div style="font-size:13px;color:#666;margin:14px 0 6px;font-weight:600;">
+                    &#128221; 选择题目
+                </div>
+                <div style="border:1px solid #eee;border-radius:8px;padding:10px 14px;margin-bottom:14px;">
+                    <div style="display:flex;gap:8px;margin-bottom:10px;">
+                        <input type="text" id="exProbKwInput" class="form-input" placeholder="按题目 ID/标题搜索题目" style="flex:1;">
+                        <button type="button" class="btn btn-accent btn-sm" onclick="searchExamProblemsPicker()">&#128269; 搜索</button>
+                    </div>
+                    <div id="examProblemPickerWrap" style="max-height:200px;overflow-y:auto;border:1px solid #f0f0f0;border-radius:6px;padding:8px;background:#fafafa;">
+                        <div style="padding:12px;text-align:center;color:#999;">请先点击搜索加载题目</div>
+                    </div>
+                    <div style="margin-top:10px;font-size:12.5px;color:#555;">
+                        已选题目 (<span id="exPickedCount" style="font-weight:600;color:#1976d2;">0</span>)：
+                        <div id="exPickedProblemsBox" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;"></div>
+                    </div>
+                </div>
+
+                <div style="font-size:13px;color:#666;margin:14px 0 6px;font-weight:600;">
+                    &#9881;&#65039; 考试功能开关 / 防作弊 Flags
+                </div>
+                <div style="border:1px solid #eee;border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+                    <div class="form-row-2">
+                        <label class="flag-row">
+                            <input type="checkbox" id="ef_hide_score" checked>
+                            <span><b>考试期间隐藏分数</b><span style="color:#999;font-size:12px;">（提交不显示得分，仅结束后公布）</span></span>
+                        </label>
+                        <label class="flag-row">
+                            <input type="checkbox" id="ef_forbid_copy_paste" checked>
+                            <span><b>禁用复制/粘贴</b><span style="color:#999;font-size:12px;">（防止从外部粘贴代码）</span></span>
+                        </label>
+                        <label class="flag-row">
+                            <input type="checkbox" id="ef_forbid_tab_switch">
+                            <span><b>禁止切换标签页</b><span style="color:#999;font-size:12px;">（切出页面自动记录并警告）</span></span>
+                        </label>
+                        <label class="flag-row">
+                            <input type="checkbox" id="ef_fullscreen_only">
+                            <span><b>仅全屏作答</b><span style="color:#999;font-size:12px;">（进入考试强制全屏）</span></span>
+                        </label>
+                        <label class="flag-row">
+                            <input type="checkbox" id="ef_allow_multiple_submit" checked>
+                            <span><b>允许多次提交</b><span style="color:#999;font-size:12px;">（取最高分，关闭则只取第一次）</span></span>
+                        </label>
+                        <label class="flag-row">
+                            <input type="checkbox" id="ef_auto_publish">
+                            <span><b>结束后自动发布成绩</b><span style="color:#999;font-size:12px;">（无需手动发布）</span></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-hint" id="examFormHint"></div>
+                <div id="examResult" class="auth-result" style="margin-top:8px;"></div>
+            </div>
+            <div class="modal-footer form-actions-bar">
+                <button id="examCancelBtn" class="btn btn-secondary" type="button">取消</button>
+                <button id="examSaveBtn" class="btn btn-primary" type="button">&#128190; 保存考试</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ 考试详情弹窗 ============ -->
+    <div id="examDetailMask" class="modal-mask" style="display:none;">
+        <div class="modal-card" style="max-width:1120px;">
+            <div class="modal-header">
+                <div class="modal-title" id="examDetailTitle">考试详情</div>
+                <button class="modal-close" id="examDetailCloseBtn" type="button">&times;</button>
+            </div>
+            <div class="modal-body" style="max-height:75vh;overflow-y:auto;padding-bottom:20px;">
+                <div id="exDetailInfoBox" style="margin-bottom:14px;padding:10px 14px;background:#f5f7fa;border-radius:8px;"></div>
+                <div id="exAdminActions" class="admin-toolbar" style="margin-bottom:10px;">
+                    <div class="toolbar-left" id="exLeftActions">
+                        <button id="exStartBtn" class="btn" type="button" style="display:none;font-size:15px;font-weight:600;padding:10px 20px;background:#27AE60;color:white;border-radius:8px;border:none;box-shadow:0 4px 12px rgba(39,174,96,0.3);">
+                            &#9654; 开始考试
+                        </button>
+                        &nbsp;
+                        <span id="exUserTimerBox" class="countdown-active" style="display:none;padding:6px 14px;border-radius:8px;background:#ffebee;color:#c62828;font-weight:700;font-size:14px;border:1px solid #ef9a9a;">
+                            倒计时：<span id="exUserCountdown">--:--:--</span>
+                        </span>
+                        &nbsp;
+                        <button id="exPublishBtn" class="btn btn-sm admin-only" type="button" style="background:#e3f2fd;color:#0d47a1;">
+                            &#128227; 发布成绩
+                        </button>
+                        &nbsp;
+                        <button id="exExtendBtn" class="btn btn-sm admin-only" type="button" style="background:#fff8e1;color:#e65100;">
+                            &#9201; 延长考试
+                        </button>
+                        &nbsp;
+                        <button id="exForceEndBtn" class="btn btn-sm admin-only" type="button" style="background:#ffebee;color:#c62828;">
+                            &#9203;&#65039; 强制结束
+                        </button>
+                        &nbsp;
+                        <button id="exExportMatrixBtn" class="btn btn-sm admin-only" type="button" style="background:#e8f5e9;color:#2e7d32;">
+                            &#128196; 导出成绩矩阵 CSV
+                        </button>
+                    </div>
+                </div>
+
+                <div id="exDetailTabs" class="tabs">
+                    <button class="tab-btn tab-active" data-tab="problems" type="button">📝 题目列表</button>
+                    <button class="tab-btn" data-tab="matrix" type="button">📊 成绩矩阵</button>
+                    <button class="tab-btn" data-tab="events" type="button">
+                        🔔 事件日志
+                        <span id="exEventBadge" class="tab-badge" style="display:none;">0</span>
+                    </button>
+                </div>
+
+                <div id="exTabProblems" class="tab-content tab-active">
+                    <div id="exDetailProblemsWrap" style="margin-top:12px;"></div>
+                </div>
+                <div id="exTabMatrix" class="tab-content">
+                    <div id="exDetailMatrixWrap" style="margin-top:12px;border:1px solid #eee;border-radius:8px;overflow:auto;"></div>
+                </div>
+                <div id="exTabEvents" class="tab-content">
+                    <div id="exDetailEventsWrap" style="margin-top:12px;"></div>
+                </div>
+            </div>
+            <div class="modal-footer form-actions-bar">
+                <button id="examDetailCancelBtn" class="btn btn-secondary" type="button">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 登录/注册弹窗（复用，防止会话过期后卡住） -->
+    <div id="authModalMask" class="modal-mask" style="display:none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-title" id="authTitle">登录</div>
+                <button class="modal-close" id="authCloseBtn" type="button">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>用户名 <span style="color:#999;font-size:12px;">(3-40 字符)</span></label>
+                    <input type="text" id="authUsername" class="form-input" placeholder="请输入用户名" autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label>密码 <span style="color:#999;font-size:12px;">(至少 6 位)</span></label>
+                    <div class="password-wrap">
+                        <input type="password" id="authPassword" class="form-input" placeholder="请输入密码" autocomplete="new-password">
+                        <button type="button" class="eye-btn" id="eyePwd" title="显示/隐藏密码">
+                            <span id="eyePwdIcon">&#128065;</span>
+                        </button>
+                    </div>
+                </div>
+                <div id="confirmPasswordBlock" style="display:none;">
+                    <div class="form-group">
+                        <label>确认密码 <span style="color:#999;font-size:12px;">(再次输入相同密码)</span></label>
+                        <div class="password-wrap">
+                            <input type="password" id="authPassword2" class="form-input" placeholder="请再次输入密码" autocomplete="new-password">
+                            <button type="button" class="eye-btn" id="eyePwd2" title="显示/隐藏密码">
+                                <span id="eyePwd2Icon">&#128065;</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="strength-wrap" id="strengthWrap">
+                        <div class="strength-bar">
+                            <div class="strength-seg"></div>
+                            <div class="strength-seg"></div>
+                            <div class="strength-seg"></div>
+                        </div>
+                        <div class="strength-label">
+                            <span>密码强度：</span>
+                            <span class="strength-grade">
+                                <span class="tag" id="strengthTag">弱</span>
+                                <span id="strengthText" style="margin-left:6px;">可再加强一下</span>
+                            </span>
+                        </div>
+                        <ul class="strength-hint-list" id="strengthHints">
+                            <li data-rule="length">密码长度 ≥ 8 位</li>
+                            <li data-rule="lower">包含小写字母 (a-z)</li>
+                            <li data-rule="upper">包含大写字母 (A-Z)</li>
+                            <li data-rule="digit">包含数字 (0-9)</li>
+                            <li data-rule="special">包含特殊符号 (!@#$%^&* 等)</li>
+                        </ul>
+                        <div id="confirmHint" style="margin-top:8px;font-size:12.5px;"></div>
+                    </div>
+                </div>
+                <div class="form-hint" id="authHint"></div>
+                <div id="authResult" class="auth-result"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="authToggle" class="btn btn-secondary" type="button">切换到注册</button>
+                <button id="authSubmit" class="btn btn-primary" type="button">登录</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast" style="display:none;"></div>
+
+    <script>
+    const INITIAL_USER = {{ current_user|tojson if current_user else 'null' }};
+    window.__IS_ADMIN__ = !!(INITIAL_USER && INITIAL_USER.is_admin);
+    let currentUser = INITIAL_USER;
+    let authMode = 'login';
+    let currentKeyword = '';
+    let allExams = [];
+    let editingExamId = null;
+    let currentDetailEid = null;
+    let examPickedIds = [];
+    let exClassesForPicker = [];
+    let exProblemsForPicker = [];
+    let eventBadgeCount = 0;
+
+    const $ = id => document.getElementById(id);
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = (text ?? '') + '';
+        return div.innerHTML;
+    }
+
+    function showToast(msg, type='info', ms=2000) {
+        const t = $('toast');
+        t.className = 'toast toast-' + type;
+        t.textContent = msg;
+        t.style.display = 'block';
+        setTimeout(() => t.style.display = 'none', ms);
+    }
+
+    // ============ 顶栏 & 会话 ============
+    function renderTopUser() {
+        const box = $('topStatusBox');
+        if (currentUser) {
+            const roleLabel = currentUser.role === 'admin'
+                ? '<span style="background:rgba(255,235,59,0.25);padding:2px 8px;border-radius:10px;font-size:12px;color:#fff8e1;">管理员</span>'
+                : currentUser.role === 'banned'
+                  ? '<span style="background:rgba(0,0,0,0.2);padding:2px 8px;border-radius:10px;font-size:12px;color:#ffcdd2;">已封禁</span>'
+                  : '<span style="background:rgba(255,255,255,0.15);padding:2px 8px;border-radius:10px;font-size:12px;color:#e3f2fd;">普通用户</span>';
+            box.innerHTML = `
+                <span style="margin-right:6px;">${roleLabel}</span>
+                <span style="font-weight:600;">${escapeHtml(currentUser.username)}</span>
+                &nbsp;
+                <button id="logoutBtn" class="btn btn-sm" style="background:rgba(255,255,255,0.2);color:#fff;box-shadow:none;">登出</button>
+            `;
+            $('logoutBtn') && ($('logoutBtn').onclick = logout);
+        } else {
+            box.innerHTML = `
+                <button id="openLoginBtn" class="btn btn-sm" style="background:rgba(255,255,255,0.2);color:#fff;box-shadow:none;">登录</button>
+                &nbsp;
+                <button id="openRegisterBtn" class="btn btn-sm" style="background:rgba(255,255,255,0.28);color:#fff;box-shadow:none;">注册</button>
+            `;
+            $('openLoginBtn').onclick = () => openAuth('login');
+            $('openRegisterBtn').onclick = () => openAuth('register');
+        }
+    }
+
+    async function logout() {
+        await fetch('/api/auth/logout', { method: 'POST' });
+        currentUser = null;
+        renderTopUser();
+        showToast('已退出登录，正在跳转首页', 'ok');
+        setTimeout(() => { window.location.href = '/'; }, 800);
+    }
+
+    // ============ 认证弹窗（同 index/users 一致）============
+    function evaluateStrength(pwd) {
+        pwd = pwd || '';
+        const rules = {
+            length:  pwd.length >= 8,
+            lower:   /[a-z]/.test(pwd),
+            upper:   /[A-Z]/.test(pwd),
+            digit:   /[0-9]/.test(pwd),
+            special: /[^A-Za-z0-9]/.test(pwd),
+        };
+        const count = Object.values(rules).filter(Boolean).length;
+        let level = 'weak';
+        if (count <= 1) level = 'weak';
+        else if (count <= 3) level = 'mid';
+        else level = 'strong';
+        return { rules, count, level };
+    }
+    function renderStrength(pwd, pwd2) {
+        const wrap = $('strengthWrap');
+        const sr = evaluateStrength(pwd);
+        wrap.classList.remove('strength-weak', 'strength-mid', 'strength-strong');
+        wrap.classList.add('strength-' + sr.level);
+        $('strengthTag').textContent = sr.level === 'weak' ? '低' : sr.level === 'mid' ? '中' : '高';
+        $('strengthText').textContent = sr.level === 'weak'
+            ? '可再加强一下'
+            : sr.level === 'mid' ? '一般，建议加入更多类型' : '非常强，很安全！';
+        wrap.querySelectorAll('[data-rule]').forEach(li => {
+            const r = li.getAttribute('data-rule');
+            if (sr.rules[r]) li.classList.add('ok');
+            else li.classList.remove('ok');
+        });
+        const hint = $('confirmHint');
+        if (pwd && pwd2) {
+            if (pwd === pwd2) {
+                hint.innerHTML = '<span class="confirm-ok">&#9989; 两次输入的密码一致</span>';
+            } else {
+                hint.innerHTML = '<span class="confirm-err">&#10060; 两次输入的密码不一致</span>';
+            }
+        } else {
+            hint.textContent = '';
+        }
+        return sr;
+    }
+    function toggleEye(btnId, inputId, iconId) {
+        const btn = $(btnId), inp = $(inputId), ic = $(iconId);
+        btn.onclick = () => {
+            if (inp.type === 'password') {
+                inp.type = 'text';
+                ic.textContent = '\u{1F6AB}';
+                btn.title = '点击隐藏密码';
+            } else {
+                inp.type = 'password';
+                ic.textContent = '\u{1F441}';
+                btn.title = '点击显示密码';
+            }
+        };
+    }
+    function openAuth(mode) {
+        authMode = mode;
+        $('authTitle').textContent = mode === 'login' ? '用户登录' : '用户注册';
+        $('authSubmit').textContent = mode === 'login' ? '登录' : '注册并登录';
+        $('authToggle').textContent = mode === 'login' ? '切换到注册' : '切换到登录';
+        $('authUsername').value = '';
+        $('authPassword').value = '';
+        const pwd2 = $('authPassword2'); if (pwd2) pwd2.value = '';
+        $('authResult').textContent = '';
+        $('authResult').className = 'auth-result';
+        if (mode === 'login') {
+            $('confirmPasswordBlock').style.display = 'none';
+            $('authHint').innerHTML = '初始管理员账号：<b>admin</b> / <b>admintestpassword</b>';
+        } else {
+            $('confirmPasswordBlock').style.display = 'block';
+            $('authHint').innerHTML = '注册后将自动登录；管理员无法通过自注册创建。';
+            renderStrength('', '');
+        }
+        $('authModalMask').style.display = 'flex';
+        setTimeout(() => $('authUsername').focus(), 60);
+    }
+    function closeAuth() { $('authModalMask').style.display = 'none'; }
+
+    async function submitAuth() {
+        const username = $('authUsername').value.trim();
+        const password = $('authPassword').value;
+        const password2 = authMode === 'register' ? ($('authPassword2') ? $('authPassword2').value : '') : '';
+        const result = $('authResult');
+        if (!username || !password) {
+            result.className = 'auth-result auth-err';
+            result.textContent = '用户名和密码不能为空';
+            return;
+        }
+        if (authMode === 'register') {
+            if (password.length < 6) {
+                result.className = 'auth-result auth-err';
+                result.textContent = '密码长度至少 6 位';
+                return;
+            }
+            if (password !== password2) {
+                result.className = 'auth-result auth-err';
+                result.textContent = '两次输入的密码不一致，请确认';
+                return;
+            }
+            const sr = evaluateStrength(password);
+            if (sr.level === 'weak') {
+                result.className = 'auth-result auth-err';
+                result.textContent = '密码强度过低，请至少满足 2 条以上规则';
+                return;
+            }
+        }
+        const url = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+        try {
+            const resp = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password }),
+            });
+            const data = await resp.json();
+            if (data.code === 200) {
+                result.className = 'auth-result auth-ok';
+                result.textContent = authMode === 'login' ? '登录成功' : '注册成功，已自动登录';
+                await refreshMe();
+                setTimeout(() => {
+                    closeAuth();
+                    showToast(authMode === 'login' ? `欢迎回来，${currentUser.username}` : '注册成功', 'ok');
+                    loadExams();
+                }, 400);
+            } else {
+                result.className = 'auth-result auth-err';
+                result.textContent = (data.msg || '操作失败') + ` (code=${data.code})`;
+            }
+        } catch (e) {
+            result.className = 'auth-result auth-err';
+            result.textContent = '请求失败: ' + e.message;
+        }
+    }
+
+    async function refreshMe() {
+        try {
+            const resp = await fetch('/api/auth/me');
+            const data = await resp.json();
+            if (data.code === 200) {
+                currentUser = data.data;
+            } else {
+                currentUser = null;
+            }
+        } catch { currentUser = null; }
+        renderTopUser();
+        return currentUser;
+    }
+
+    // ============ 班级/题目选择器（考试）============
+    async function loadExamClassesForPicker() {
+        try {
+            const resp = await fetch('/api/classes');
+            const data = await resp.json();
+            if (data.code === 200) {
+                exClassesForPicker = data.data || [];
+                const sel = $('e_class_id');
+                sel.innerHTML = '<option value="">-- 请选择班级 --</option>' +
+                    exClassesForPicker.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name || c.id)}</option>`).join('');
+            }
+        } catch {}
+    }
+
+    async function searchExamProblemsPicker() {
+        const kw = ($('exProbKwInput').value || '').trim();
+        const wrap = $('examProblemPickerWrap');
+        wrap.innerHTML = '<div style="padding:12px;text-align:center;color:#999;">&#9203; 加载中...</div>';
+        try {
+            const url = kw ? `/api/problems?keyword=${encodeURIComponent(kw)}` : '/api/problems';
+            const resp = await fetch(url);
+            const data = await resp.json();
+            if (data.code === 200) {
+                exProblemsForPicker = data.data || [];
+                renderExamProbPicker();
+            } else {
+                wrap.innerHTML = '<div style="padding:12px;text-align:center;color:#c62828;">加载失败：' + escapeHtml(data.msg || '') + '</div>';
+            }
+        } catch (e) {
+            wrap.innerHTML = '<div style="padding:12px;text-align:center;color:#c62828;">请求失败：' + escapeHtml(e.message) + '</div>';
+        }
+    }
+
+    function renderExamProbPicker() {
+        const wrap = $('examProblemPickerWrap');
+        if (!exProblemsForPicker.length) {
+            wrap.innerHTML = '<div style="padding:12px;text-align:center;color:#999;">没有匹配的题目</div>';
+            return;
+        }
+        wrap.innerHTML = exProblemsForPicker.map(p => {
+            const checked = examPickedIds.includes(p.id);
+            return `
+            <label class="prob-pick-row ${checked ? 'on' : ''}">
+                <input type="checkbox" data-epid="${escapeHtml(p.id)}" ${checked ? 'checked' : ''} onchange="toggleExamPick('${escapeHtml(p.id)}')">
+                <span class="prob-pick-id">${escapeHtml(p.id)}</span>
+                <span class="prob-pick-title">${escapeHtml(p.title || '-')}</span>
+                ${p.difficulty ? `<span class="tag tag-subtle">${escapeHtml(p.difficulty)}</span>` : ''}
+            </label>`;
+        }).join('');
+    }
+
+    function toggleExamPick(pid) {
+        const idx = examPickedIds.indexOf(pid);
+        if (idx >= 0) examPickedIds.splice(idx, 1);
+        else examPickedIds.push(pid);
+        renderExamPickedBox();
+        const cb = document.querySelector(`input[data-epid="${CSS.escape(pid)}"]`);
+        if (cb) {
+            const row = cb.closest('.prob-pick-row');
+            if (row) row.classList.toggle('on', examPickedIds.includes(pid));
+        }
+    }
+
+    function renderExamPickedBox() {
+        $('exPickedCount').textContent = examPickedIds.length;
+        const box = $('exPickedProblemsBox');
+        if (!examPickedIds.length) {
+            box.innerHTML = '<span style="color:#999;font-size:12px;">（尚未选择题目）</span>';
+            return;
+        }
+        box.innerHTML = examPickedIds.map(pid => `
+            <span class="tag tag-subtle" style="display:inline-flex;align-items:center;gap:4px;">
+                ${escapeHtml(pid)}
+                <span style="cursor:pointer;color:#c62828;" onclick="removeExamPicked('${escapeHtml(pid)}')">&times;</span>
+            </span>
+        `).join('');
+    }
+
+    function removeExamPicked(pid) {
+        const idx = examPickedIds.indexOf(pid);
+        if (idx >= 0) examPickedIds.splice(idx, 1);
+        renderExamPickedBox();
+        renderExamProbPicker();
+    }
+
+    // ============ 考试编辑弹窗 ============
+    function clearExamForm() {
+        ['e_title','e_description','e_start_time','e_end_time','e_duration'].forEach(id => $(id).value = '');
+        $('e_mode').value = '2';
+        $('e_class_id').value = '';
+        $('e_duration').value = '120';
+        $('ef_hide_score').checked = true;
+        $('ef_forbid_copy_paste').checked = true;
+        $('ef_forbid_tab_switch').checked = false;
+        $('ef_fullscreen_only').checked = false;
+        $('ef_allow_multiple_submit').checked = true;
+        $('ef_auto_publish').checked = false;
+        examPickedIds = [];
+        renderExamPickedBox();
+        $('exProbKwInput').value = '';
+        $('examProblemPickerWrap').innerHTML = '<div style="padding:12px;text-align:center;color:#999;">请先点击搜索加载题目</div>';
+        $('examResult').textContent = '';
+        $('examResult').className = 'auth-result';
+        $('examFormHint').textContent = '';
+        editingExamId = null;
+    }
+
+    function openExamModal(mode, seedData) {
+        clearExamForm();
+        $('examModalTitle').textContent = mode === 'edit' ? '编辑考试' : '新建考试';
+        loadExamClassesForPicker();
+        if (seedData) {
+            editingExamId = seedData.id || null;
+            $('e_title').value = seedData.title || '';
+            $('e_mode').value = String(parseInt(seedData.mode, 10) || 2);
+            $('e_class_id').value = seedData.class_id || seedData.classId || '';
+            $('e_description').value = seedData.description || '';
+            $('e_duration').value = String(seedData.duration_minutes || seedData.duration || 120);
+            if (seedData.start_time || seedData.starts_at) {
+                const v = (seedData.start_time || seedData.starts_at || '').replace(' ', 'T').slice(0, 16);
+                $('e_start_time').value = v;
+            }
+            if (seedData.end_time || seedData.ends_at) {
+                const v = (seedData.end_time || seedData.ends_at || '').replace(' ', 'T').slice(0, 16);
+                $('e_end_time').value = v;
+            }
+            const flags = seedData.flags || {};
+            $('ef_hide_score').checked = (typeof flags.hide_score !== 'undefined') ? !!flags.hide_score : true;
+            $('ef_forbid_copy_paste').checked = (typeof flags.forbid_copy_paste !== 'undefined') ? !!flags.forbid_copy_paste : true;
+            $('ef_forbid_tab_switch').checked = !!flags.forbid_tab_switch;
+            $('ef_fullscreen_only').checked = !!flags.fullscreen_only;
+            $('ef_allow_multiple_submit').checked = (typeof flags.allow_multiple_submit !== 'undefined') ? !!flags.allow_multiple_submit : true;
+            $('ef_auto_publish').checked = !!flags.auto_publish;
+            examPickedIds = (seedData.problem_ids || seedData.problems || []).map(x => typeof x === 'string' ? x : (x.id || x.problem_id));
+            renderExamPickedBox();
+        }
+        $('examModalMask').style.display = 'flex';
+        setTimeout(() => $('e_title').focus(), 50);
+    }
+    function closeExamModal() { $('examModalMask').style.display = 'none'; }
+
+    function buildExamPayload() {
+        return {
+            title: $('e_title').value.trim(),
+            mode: parseInt($('e_mode').value, 10) || 2,
+            class_id: $('e_class_id').value,
+            description: $('e_description').value,
+            duration_minutes: parseInt($('e_duration').value) || 120,
+            start_time: $('e_start_time').value,
+            end_time: $('e_end_time').value,
+            problem_ids: examPickedIds,
+            flags: {
+                hide_score: $('ef_hide_score').checked,
+                forbid_copy_paste: $('ef_forbid_copy_paste').checked,
+                forbid_tab_switch: $('ef_forbid_tab_switch').checked,
+                fullscreen_only: $('ef_fullscreen_only').checked,
+                allow_multiple_submit: $('ef_allow_multiple_submit').checked,
+                auto_publish: $('ef_auto_publish').checked,
+            },
+        };
+    }
+
+    async function saveExam() {
+        const result = $('examResult');
+        const payload = buildExamPayload();
+        if (!payload.title) { result.className='auth-result auth-err'; result.textContent='请填写考试标题'; return; }
+        if (!payload.class_id) { result.className='auth-result auth-err'; result.textContent='请选择班级'; return; }
+        if (!payload.start_time) { result.className='auth-result auth-err'; result.textContent='请选择开始时间'; return; }
+        if (!payload.end_time) { result.className='auth-result auth-err'; result.textContent='请选择结束时间'; return; }
+        if (!examPickedIds.length) { result.className='auth-result auth-err'; result.textContent='请至少选择一道题目'; return; }
+        try {
+            const url = editingExamId
+                ? `/api/exams/${encodeURIComponent(editingExamId)}`
+                : '/api/exams';
+            const method = editingExamId ? 'PUT' : 'POST';
+            const resp = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await resp.json();
+            if (data.code === 200) {
+                result.className = 'auth-result auth-ok';
+                result.textContent = editingExamId ? '更新成功' : '创建成功';
+                showToast(editingExamId ? '考试已更新' : '考试已创建', 'ok');
+                setTimeout(() => { closeExamModal(); loadExams(); }, 500);
+            } else {
+                result.className = 'auth-result auth-err';
+                result.textContent = (data.msg || '操作失败') + ` (code=${data.code})`;
+                if (data.code === 401 || data.code === 403) setTimeout(() => openAuth('login'), 400);
+            }
+        } catch (e) {
+            result.className = 'auth-result auth-err';
+            result.textContent = '请求失败: ' + e.message;
+        }
+    }
+
+    /* ============================================================
+       【V6 · 考试列表卡片渲染】
+       功能：把原来的 8 列 <table> → 改为 ex-card-grid 响应式卡片网
+       考试差异化：①橙色系 ②模式 pill(练习/模拟/竞赛) ③时长 pill
+                 ④成绩公布状态 tag-warn ⑤ admin 多「📢 发布成绩」按钮
+       ============================================================ */
+    // ============ 考试列表 ============
+    function _matchKeyword(e, kw) {
+        if (!kw) return true;
+        const s = kw.toLowerCase();
+        return (e.title || '').toLowerCase().includes(s);
+    }
+
+    function renderExams(list) {
+        // -------- V6：卡片化输出，不再使用 <table> 挤成一团 --------
+        const wrap = $('examListWrap');
+        $('totalCount').textContent = list.length;
+        const isAdmin = currentUser && currentUser.role === 'admin';
+        if (!list.length) {
+            wrap.innerHTML = `
+                <div class="empty-hint empty-hint-info">
+                    <div class="empty-hint-icon">&#128221;</div>
+                    <div class="empty-hint-title">没有匹配的考试</div>
+                    ${currentKeyword ? `<div class="empty-hint-desc">关键词：${escapeHtml(currentKeyword)}</div>` : (isAdmin ? '<div class="empty-hint-desc">点击右上角「新建考试」创建第一场考试</div>' : '<div class="empty-hint-desc">请等待老师发布新考试，或联系管理员确认您是否已加入班级</div>')}
+                </div>`;
+            return;
+        }
+        // 考试模式映射（1=练习 2=模拟 3=竞赛）
+        const modeInt = { 1: '练习', 2: '模拟', 3: '竞赛' };
+        const modeLabel = m => {
+            const k = parseInt(m, 10);
+            return modeInt[k] || escapeHtml(m || '-');
+        };
+
+        /* ---------- 工具函数组（同作业，日期/状态/剩余天数 通用） ---------- */
+        function _pad(n) { return n < 10 ? '0' + n : '' + n; }
+        function _fmt(t) {
+            if (!t) return '-';
+            const d = new Date(t);
+            if (isNaN(d.getTime())) return String(t).slice(0, 16);
+            return d.getFullYear() + '-' + _pad(d.getMonth()+1) + '-' + _pad(d.getDate()) + ' ' + _pad(d.getHours()) + ':' + _pad(d.getMinutes());
+        }
+        function _days_left(end_str) {
+            const et = new Date(end_str);
+            if (isNaN(et.getTime())) return null;
+            const now_ms = Date.now();
+            const diff_ms = et.getTime() - now_ms;
+            const days = Math.ceil(diff_ms / (1000*60*60*24));
+            return days;
+        }
+        // 考试状态（4 态，比作业多一个「成绩已公布」优先态 tag-warn 橙）
+        function _status(e) {
+            if (e.score_published) return {label:'成绩已公布', cls:'tag tag-warn'};
+            const now = Date.now();
+            const st = new Date(e.start_time || e.starts_at || '').getTime();
+            const et = new Date(e.end_time || e.ends_at || '').getTime();
+            if (isNaN(et)) return {label:'未设置', cls:'tag tag-subtle'};
+            if (!isNaN(st) && now < st) return {label:'未开始', cls:'tag tag-info'};
+            if (now > et) return {label:'已结束', cls:'tag tag-subtle'};
+            return {label:'进行中', cls:'tag tag-ok'};
+        }
+        function _days_badge(e) {
+            const d = _days_left(e.end_time || e.ends_at);
+            if (d == null) return '';
+            if (d < 0) return `<span class="tag tag-subtle" style="margin-left:8px;">已结束 ${-d} 天</span>`;
+            if (d === 0) return `<span class="tag tag-err" style="margin-left:8px;">今天截止</span>`;
+            if (d <= 3) return `<span class="tag tag-warn" style="margin-left:8px;">还剩 ${d} 天</span>`;
+            return `<span class="tag tag-subtle" style="margin-left:8px;">还剩 ${d} 天</span>`;
+        }
+
+        /* ---------- 单卡渲染：考试多 2 个专属 pill + 4 态 + 发布成绩按钮 ---------- */
+        const cards = list.map(e => {
+            const pc = e.problem_count ?? (e.problem_ids||e.problems||[]).length ?? 0;
+            const st = _status(e);
+            const durMin = parseInt(e.duration_minutes || e.duration || 0, 10);
+            // admin 4 按钮：详情/编辑/📢发布成绩(TODO toast)/删除
+            const adminBtns = `
+                <button class="btn btn-secondary btn-sm" type="button" onclick="openExamDetail('${e.id}')">&#128065; 详情</button>
+                <button class="btn btn-accent btn-sm" type="button" onclick="editExam('${e.id}')">&#9998;&#65039; 编辑</button>
+                <button class="btn btn-sm" type="button" style="background:#fff3e0;color:#e65100;" onclick="showToast('TODO: 成绩发布 API 待接入','warn')">&#128226; 发布成绩</button>
+                <button class="btn btn-sm" type="button" style="background:#ffebee;color:#c62828;" onclick="deleteExam('${e.id}')">&#128465;&#65039; 删除</button>
+            `;
+            // 学生按钮：进行中+未公布成绩 → ▶进入考试；否则 → 查看详情
+            const userBtns = e.status === 'ongoing' && !e.score_published
+                ? `<button class="btn btn-primary btn-sm" type="button" onclick="openExamDetail('${e.id}')">&#9654; 进入考试</button>`
+                : `<button class="btn btn-secondary btn-sm" type="button" onclick="openExamDetail('${e.id}')">&#128065; 查看详情</button>`;
+            const className = e.class_name || e.class_id || '未指定班级';
+            const desc = (e.description || e.desc || '').toString();
+            const descShort = desc.length > 80 ? desc.slice(0,78) + '…' : desc;
+            return `
+            <div class="ex-card">
+                <!-- ① 卡头：📝橙图标 + 标题 + 右状态 badge（成绩公布优先橙） -->
+                <div class="aj-card-header">
+                    <div class="aj-card-title">
+                        <span class="aj-card-icon" style="color:#ef6c00;">&#128221;</span>
+                        <span class="aj-card-title-text" title="${escapeHtml(e.title||'')}">${escapeHtml(e.title || '-')}</span>
+                    </div>
+                    <span class="${st.cls}">${st.label}</span>
+                </div>
+                <!-- ② pill 组：班级🏫 / 题数📄 / 模式🏆 / 时长⏱(>0才显示) -->
+                <div class="aj-pill-group stat-pills" style="margin:6px 0 10px;">
+                    <span class="stat-pill">&#127979; ${escapeHtml(String(className))}</span>
+                    <span class="stat-pill">&#128196; ${pc} 题</span>
+                    <span class="stat-pill">&#127942; ${modeLabel(e.mode)}</span>
+                    ${durMin > 0 ? `<span class="stat-pill">&#9201; ${durMin} 分钟</span>` : ''}
+                </div>
+                <!-- ③ 时间行：开始 / 结束 + 剩余天数 badge -->
+                <div class="aj-time-row">
+                    <span class="aj-time-label">开始</span>
+                    <span class="aj-time-value">${escapeHtml(_fmt(e.start_time || e.starts_at))}</span>
+                </div>
+                <div class="aj-time-row">
+                    <span class="aj-time-label">结束</span>
+                    <span class="aj-time-value">${escapeHtml(_fmt(e.end_time || e.ends_at))} ${_days_badge(e)}</span>
+                </div>
+                <!-- ④ 说明预览 80 字（左橙条） -->
+                ${descShort ? `<div class="ex-desc" title="${escapeHtml(desc)}">${escapeHtml(descShort)}</div>` : ''}
+                <!-- ⑤ 操作按钮条（admin 4 按钮 / 学生 1 按钮） -->
+                <div class="aj-action-row">
+                    ${isAdmin ? adminBtns : userBtns}
+                </div>
+            </div>`;
+        }).join('');
+
+        wrap.innerHTML = `<div class="ex-card-grid">${cards}</div>`;
+    }
+
+    async function loadExams() {
+        const wrap = $('examListWrap');
+        wrap.innerHTML = `
+            <div style="text-align:center;padding:40px;color:#999;">
+                <div style="font-size:36px;margin-bottom:8px;">&#9203;</div>
+                正在加载考试列表...
+            </div>`;
+        try {
+            const resp = await fetch('/api/exams');
+            const data = await resp.json();
+            if (data.code === 200) {
+                allExams = (data.data || []).map(x => Object.assign({}, x, {
+                    id: x.exam_id ?? x.id,
+                    title: x.title ?? x.exam_title ?? '-',
+                    mode: x.mode ?? 1,
+                    class_id: x.class_id ?? null,
+                    class_name: x.class_name ?? (Array.isArray(x.audience_classes) ? x.audience_classes.map(id => '#' + id).join(',') : (x.audience_classes ?? '')),
+                    start_time: x.starts_at ?? x.start_time ?? '-',
+                    end_time: x.ends_at ?? x.end_time ?? '-',
+                    duration_minutes: x.duration_minutes ?? x.duration ?? 0,
+                    problem_count: x.problem_count ?? (Array.isArray(x.problem_ids) ? x.problem_ids.length : 0),
+                    score_published: !!x.score_published,
+                }));
+                const filtered = allExams.filter(e => _matchKeyword(e, currentKeyword));
+                renderExams(filtered);
+            } else if (data.code === 401 || data.code === 403) {
+                showToast(data.msg || '请先登录', 'err');
+                setTimeout(() => openAuth('login'), 300);
+            } else {
+                showToast('加载失败: ' + (data.msg || ''), 'err');
+            }
+        } catch (e) {
+            showToast('请求失败: ' + e.message, 'err');
+        }
+    }
+
+    async function editExam(id) {
+        try {
+            const resp = await fetch(`/api/exams/${encodeURIComponent(id)}`);
+            const data = await resp.json();
+            if (data.code === 200) {
+                openExamModal('edit', data.data);
+            } else {
+                showToast('加载考试详情失败: ' + (data.msg || ''), 'err');
+                if (data.code === 401 || data.code === 403) openAuth('login');
+            }
+        } catch (e) {
+            showToast('请求失败: ' + e.message, 'err');
+        }
+    }
+
+    async function deleteExam(id) {
+        const title = (allExams.find(x => x.id === id) || {}).title || id;
+        if (!confirm(`确定要删除考试「${title}」(id=${id}) 吗？此操作不可恢复！`)) return;
+        try {
+            const resp = await fetch(`/api/exams/${encodeURIComponent(id)}`, { method: 'DELETE' });
+            const data = await resp.json();
+            if (data.code === 200) {
+                showToast(`已删除考试 ${title}`, 'ok');
+                loadExams();
+            } else {
+                showToast('删除失败: ' + (data.msg || '') + ` (code=${data.code})`, 'err');
+                if (data.code === 401 || data.code === 403) openAuth('login');
+            }
+        } catch (e) {
+            showToast('请求失败: ' + e.message, 'err');
+        }
+    }
+
+    // ============ 考试详情（含成绩矩阵 / 事件日志 / 管理操作）============
+    async function openExamDetail(id) {
+        currentDetailEid = id;
+        const ex = allExams.find(x => x.id === id) || {};
+        $('examDetailTitle').innerHTML = `&#128221; 考试详情：<span style="font-weight:500;color:#333;">${escapeHtml(ex.title || id)}</span>`;
+        $('examDetailMask').style.display = 'flex';
+        const isAdmin = currentUser && currentUser.role === 'admin';
+        if (!isAdmin) {
+            const act = $('exAdminActions');
+            if (act) act.style.display = 'none';
+        }
+        $('exDetailInfoBox').innerHTML = '<div style="color:#999;">&#9203; 加载中...</div>';
+        $('exDetailProblemsWrap').innerHTML = '<div style="padding:12px;color:#999;">&#9203; 加载中...</div>';
+        $('exDetailMatrixWrap').innerHTML = '<div style="padding:24px;color:#999;text-align:center;">&#9203; 加载中...</div>';
+        $('exDetailEventsWrap').innerHTML = '<div style="padding:12px;color:#999;">&#9203; 加载中...</div>';
+        eventBadgeCount = 0;
+        const badge = $('exEventBadge');
+        if (badge) { badge.style.display = 'none'; badge.textContent = '0'; }
+        try {
+            const isAdmin = currentUser && currentUser.role === 'admin';
+            document.querySelectorAll('.admin-only').forEach(el => { el.style.display = isAdmin ? '' : 'none'; });
+            const reqs = [fetch(`/api/exams/${encodeURIComponent(id)}`)];
+            if (isAdmin) {
+                reqs.push(fetch(`/api/exams/${encodeURIComponent(id)}/stats`));
+                reqs.push(fetch(`/api/exams/${encodeURIComponent(id)}/events`));
+            } else {
+                reqs.push(fetch(`/api/exams/${encodeURIComponent(id)}/window`));
+            }
+            const results = await Promise.all(reqs);
+            const data = await results[0].json();
+            let merged = data.data || {};
+            if (isAdmin) {
+                try {
+                    const statsRaw = await results[1].json();
+                    const evtsRaw = await results[2].json();
+                    merged.__stats = statsRaw.data || {};
+                    merged.__events = evtsRaw.data || [];
+                } catch(e) {}
+            } else {
+                try {
+                    merged.__window = (await results[1].json()).data || {};
+                } catch(e) { merged.__window = {}; }
+            }
+            if (data.code === 200) {
+                renderExamDetail(merged);
+            } else {
+                $('exDetailInfoBox').innerHTML = '<div style="color:#c62828;">加载失败：' + escapeHtml(data.msg || '') + '</div>';
+            }
+        } catch (e) {
+            $('exDetailInfoBox').innerHTML = '<div style="color:#c62828;">请求失败：' + escapeHtml(e.message) + '</div>';
+        }
+    }
+    function closeExamDetail() { $('examDetailMask').style.display = 'none'; currentDetailEid = null; }
+
+    function renderExamDetail(d) {
+        const st = d.__stats || {};
+        const ev = d.__events || [];
+        const rawExam = st.exam || d.exam || d;
+        const e = Object.assign({}, rawExam, {
+            id: rawExam.id ?? rawExam.exam_id ?? null,
+        });
+        const rawProblems = st.problems || d.problems || e.problems || e.problem_ids || e.problem_order || [];
+        const problems = rawProblems.map(p => {
+            if (typeof p === 'string') return {problem_id: p, title: p, points: 0};
+            return Object.assign({problem_id: p.id || p.problem_id, title: p.title || p.id || p.problem_id, points: p.points || 0}, p);
+        }).filter(p => p.problem_id);
+        const users = st.rows || st.users || d.users || d.members || [];
+        const matrix = st.matrix || d.matrix || d.scores || {};
+        const events = ev.length ? ev : (d.events || d.event_log || []);
+        const modeIntMap = { 1: '练习', 2: '模拟', 3: '竞赛' };
+        const modeText = m => { const k = parseInt(m, 10); return modeIntMap[k] || escapeHtml(m || '-'); };
+        const flags = e.flags || {};
+        const flagsList = [];
+        if (flags.hide_score) flagsList.push('隐藏分数');
+        if (flags.forbid_copy_paste) flagsList.push('禁复制粘贴');
+        if (flags.forbid_tab_switch) flagsList.push('禁切标签页');
+        if (flags.fullscreen_only) flagsList.push('仅全屏');
+        if (flags.allow_multiple_submit) flagsList.push('多次提交');
+        if (flags.auto_publish) flagsList.push('自动发布');
+        const scorePublished = !!e.score_published || !!e.published;
+        const isAdminNow = window.__IS_ADMIN__;
+        $('exDetailInfoBox').innerHTML = `
+            <div style="font-size:13px;line-height:1.8;">
+                <b>标题：</b>${escapeHtml(e.title || '-')} &nbsp;|&nbsp;
+                <b>模式：</b><span class="tag tag-subtle">${modeText(e.mode)}</span> &nbsp;|&nbsp;
+                <b>班级：</b>${escapeHtml(e.class_name || e.class_id || '-')} &nbsp;|&nbsp;
+                <b>时长：</b>${e.duration_minutes || e.duration || 0} 分钟
+                <br>
+                <b>时间：</b>${escapeHtml(e.start_time || e.starts_at || '-')} ~ ${escapeHtml(e.end_time || e.ends_at || '-')} &nbsp;|&nbsp;
+                <b>题目数：</b>${problems.length} &nbsp;|&nbsp;
+                <b>成员数：</b>${users.length}
+                ${flagsList.length ? `<br><b>Flags：</b>` + flagsList.map(f => `<span class="tag tag-warn" style="margin-right:4px;">${f}</span>`).join('') : ''}
+                <br>${scorePublished ? `<span class="tag tag-success">✅ 成绩已发布</span>` : isAdminNow ? `<span class="tag tag-warn">⏳ 成绩未发布（管理员可见真实分）</span>` : `<span class="tag tag-subtle">🔒 成绩未发布</span>`}
+                ${e.description ? `<br><b>说明：</b>${escapeHtml(e.description)}` : ''}
+            </div>`;
+        const isAdmin = isAdminNow;
+        if (!problems.length) {
+            $('exDetailProblemsWrap').innerHTML = '<div style="padding:12px;color:#999;">无题目</div>';
+        } else {
+            const rowsHtml = problems.map((p, i) => {
+                const pid = typeof p === 'string' ? p : (p.id || p.problem_id);
+                const ptitle = typeof p === 'string' ? p : (p.title || pid);
+                const pts = (typeof p === 'object' && p.points) ? p.points : (e.problem_order && e.problem_order[i] ? e.problem_order[i].points : 0);
+                const judgeUrl = `/judge/${encodeURIComponent(pid)}?exam_id=${encodeURIComponent(e.id)}`;
+                return `<tr onclick="window.location.href='${judgeUrl}'" style="cursor:pointer;">
+                    <td style="width:60px;text-align:center;"><b>${i + 1}</b></td>
+                    <td style="font-weight:600;">${escapeHtml(pid)}</td>
+                    <td>${escapeHtml(ptitle)}</td>
+                    <td style="width:80px;text-align:center;"><span class="tag tag-subtle">${pts} 分</span></td>
+                </tr>`;
+            }).join('');
+            $('exDetailProblemsWrap').innerHTML = `
+                <div style="border:1px solid #eee;border-radius:10px;overflow:hidden;">
+                <table class="data-table">
+                    <thead><tr><th style="width:60px;text-align:center;">序号</th><th>题目ID</th><th>题目标题</th><th style="width:80px;text-align:center;">分值</th></tr></thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table></div>`;
+        }
+        renderExamScoreMatrix(users, problems, matrix, isAdmin, scorePublished, !!flags.hide_score);
+        renderExamEvents(events);
+        const exUserWindow = d.__window || {};
+        const exStartBtn = $('exStartBtn');
+        const exTimerBox = $('exUserTimerBox');
+        const exCountdown = $('exUserCountdown');
+        const mode = parseInt(e.mode || 0, 10);
+        let _t = null;
+        function _fmtHMS(sec) {
+            sec = Math.max(0, Math.floor(sec));
+            const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = sec % 60;
+            return [h, m, s].map(x => String(x).padStart(2,'0')).join(':');
+        }
+        function _refreshCountdown(targetTsMs) {
+            if (typeof window.__examCountdownInt !== 'undefined') clearInterval(window.__examCountdownInt);
+            const tick = () => {
+                const remain = (targetTsMs - Date.now()) / 1000;
+                if (exCountdown) exCountdown.textContent = _fmtHMS(remain);
+                if (remain <= 0 && window.__examCountdownInt) {
+                    clearInterval(window.__examCountdownInt);
+                }
+            };
+            tick();
+            window.__examCountdownInt = setInterval(tick, 1000);
+        }
+        if (exStartBtn && !isAdmin) {
+            if (exUserWindow.started) {
+                exStartBtn.style.display = 'none';
+                if (exTimerBox) {
+                    exTimerBox.style.display = 'inline-block';
+                    exTimerBox.classList.add('countdown-active');
+                }
+                if (exUserWindow.ends_at_ms || exUserWindow.ends_at) {
+                    const tMs = exUserWindow.ends_at_ms || (new Date(String(exUserWindow.ends_at).replace('Z','')).getTime());
+                    _refreshCountdown(tMs);
+                }
+            } else if (mode === 2) {
+                exStartBtn.style.display = 'inline-block';
+                if (exTimerBox) {
+                    exTimerBox.style.display = 'none';
+                    exTimerBox.classList.remove('countdown-active');
+                }
+                exStartBtn.onclick = async () => {
+                    try {
+                        const resp = await fetch(`/api/exams/${encodeURIComponent(e.id)}/start`, {
+                            method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({}),
+                        });
+                        const d2 = await resp.json();
+                        if (d2.code === 200) {
+                            showToast('考试已开始，开始答题！', 'ok');
+                            exStartBtn.style.display = 'none';
+                            if (exTimerBox) {
+                                exTimerBox.style.display = 'inline-block';
+                                exTimerBox.classList.add('countdown-active');
+                            }
+                            const ends_at = (d2.data || {}).ends_at;
+                            if (ends_at) {
+                                _refreshCountdown(new Date(String(ends_at).replace('Z','')).getTime());
+                            }
+                            setTimeout(()=>openExamDetail(e.id), 800);
+                        } else {
+                            showToast('开始失败: ' + (d2.msg || ''), 'err');
+                        }
+                    } catch (err) {
+                        showToast('请求失败: ' + err.message, 'err');
+                    }
+                };
+            } else {
+                exStartBtn.style.display = 'none';
+                if (exTimerBox) {
+                    exTimerBox.style.display = 'none';
+                    exTimerBox.classList.remove('countdown-active');
+                }
+            }
+        } else if (exStartBtn) {
+            exStartBtn.style.display = 'none';
+            if (exTimerBox) {
+                exTimerBox.style.display = 'none';
+                exTimerBox.classList.remove('countdown-active');
+            }
+        }
+    }
+
+    function renderExamScoreMatrix(users, problems, matrix, isAdmin, scorePublished, hideScore) {
+        const wrap = $('exDetailMatrixWrap');
+        if (!users.length) {
+            wrap.innerHTML = '<div style="padding:24px;text-align:center;color:#999;">暂无成员数据</div>';
+            return;
+        }
+        const pids = problems.map(p => typeof p === 'string' ? p : (p.id || p.problem_id));
+        const lockIcon = isAdmin ? '' : '<span style="color:#888;">🔒</span>';
+        const shouldHide = !isAdmin && !!hideScore && !scorePublished;
+        wrap.innerHTML = `
+            <table class="data-table"><thead><tr>
+                <th style="position:sticky;left:0;background:#f5f7fa;z-index:2;">学生</th>
+                ${pids.map(pid => `<th>${escapeHtml(pid)}</th>`).join('')}
+                <th>总分</th>
+            </tr></thead>
+            <tbody>
+                ${users.map(u => {
+                    const username = u.username || u.name || u.id;
+                    let total = 0;
+                    const cells = pids.map(pid => {
+                        const key = `${username}:${pid}`;
+                        const raw = (matrix && (matrix[key] != null)) ? matrix[key] :
+                                      (u.scores && u.scores[pid] != null ? u.scores[pid] : '-');
+                        const sNum = typeof raw === 'number' ? raw : (raw === '-' || raw == null ? 0 : parseFloat(raw) || 0);
+                        total += sNum;
+                        if (shouldHide) {
+                            return `<td style="text-align:center;">${lockIcon || '<span style="color:#888;">成绩未发布</span>'}</td>`;
+                        }
+                        return `<td style="text-align:center;">${raw}</td>`;
+                    }).join('');
+                    const totalCell = shouldHide
+                        ? `<td style="text-align:center;font-weight:600;">${lockIcon || '<span style="color:#888;">成绩未发布</span>'}</td>`
+                        : `<td style="text-align:center;font-weight:600;">${total}</td>`;
+                    return `<tr>
+                        <td style="position:sticky;left:0;background:#fff;"><b>${escapeHtml(username)}</b></td>
+                        ${cells}
+                        ${totalCell}
+                    </tr>`;
+                }).join('')}
+            </tbody></table>`;
+    }
+
+    function renderExamEvents(events) {
+        const wrap = $('exDetailEventsWrap');
+        eventBadgeCount = events.length;
+        const badge = $('exEventBadge');
+        if (badge) {
+            if (eventBadgeCount > 0) { badge.style.display = 'inline-block'; badge.textContent = String(eventBadgeCount); }
+            else { badge.style.display = 'none'; }
+        }
+        if (!events.length) {
+            wrap.innerHTML = '<div style="padding:14px;color:#999;">暂无事件记录</div>';
+            return;
+        }
+        const evTypeLabel = {
+            start: { tag: 'tag-success', icon: '▶️', label: '进入考试' },
+            submit: { tag: 'tag-info', icon: '📤', label: '提交代码' },
+            tab_switch: { tag: 'tag-warn', icon: '🔄', label: '切换标签页' },
+            copy: { tag: 'tag-err', icon: '📋', label: '复制操作' },
+            paste: { tag: 'tag-err', icon: '📋', label: '粘贴操作' },
+            end: { tag: 'tag-subtle', icon: '🏁', label: '交卷/结束' },
+            force_end: { tag: 'tag-err', icon: '🚫', label: '管理员强制结束' },
+            extended: { tag: 'tag-warn', icon: '⏱️', label: '考试延长' },
+            published: { tag: 'tag-success', icon: '📢', label: '成绩发布' },
+        };
+        wrap.innerHTML = `
+            <div style="border:1px solid #eee;border-radius:8px;overflow:hidden;">
+                <table class="data-table">
+                    <thead><tr><th>时间</th><th>用户</th><th>类型</th><th>详情</th></tr></thead>
+                    <tbody>
+                        ${events.slice().reverse().map(ev => {
+                            const meta = evTypeLabel[ev.type] || { tag: 'tag-subtle', icon: '📌', label: ev.type || '-' };
+                            return `<tr>
+                                <td style="white-space:nowrap;">${escapeHtml(ev.time || ev.timestamp || ev.created_at || '-')}</td>
+                                <td><b>${escapeHtml(ev.username || ev.user || '-')}</b></td>
+                                <td><span class="tag ${meta.tag}">${meta.icon} ${meta.label}</span></td>
+                                <td>${escapeHtml(ev.detail || ev.message || ev.description || '-')}</td>
+                            </tr>`;
+                        }).join('')}
+                    </tbody>
+                </table>
+            </div>`;
+    }
+
+    async function publishExamScores() {
+        if (!currentDetailEid) return;
+        if (!confirm('确定要发布该考试的成绩吗？发布后学生可见分数。')) return;
+        try {
+            const resp = await fetch(`/api/exams/${encodeURIComponent(currentDetailEid)}/publish`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({published: true}),
+            });
+            const data = await resp.json();
+            if (data.code === 200) {
+                showToast('成绩已发布', 'ok');
+                openExamDetail(currentDetailEid);
+            } else {
+                showToast('发布失败: ' + (data.msg || ''), 'err');
+            }
+        } catch (e) {
+            showToast('请求失败: ' + e.message, 'err');
+        }
+    }
+
+    async function extendExam() {
+        if (!currentDetailEid) return;
+        const mins = prompt('请输入延长分钟数（正整数）：', '30');
+        if (!mins) return;
+        const n = parseInt(mins);
+        if (isNaN(n) || n <= 0) { showToast('请输入正整数分钟数', 'warn'); return; }
+        try {
+            const resp = await fetch(`/api/exams/${encodeURIComponent(currentDetailEid)}/extend`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ minutes: n }),
+            });
+            const data = await resp.json();
+            if (data.code === 200) {
+                showToast(`考试已延长 ${n} 分钟`, 'ok');
+                openExamDetail(currentDetailEid);
+            } else {
+                showToast('延长失败: ' + (data.msg || ''), 'err');
+            }
+        } catch (e) {
+            showToast('请求失败: ' + e.message, 'err');
+        }
+    }
+
+    async function forceEndExam() {
+        if (!currentDetailEid) return;
+        if (!confirm('确定要强制结束该考试吗？所有正在考试的学生将被立即交卷！')) return;
+        try {
+            const resp = await fetch(`/api/exams/${encodeURIComponent(currentDetailEid)}/force_end`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+            });
+            const data = await resp.json();
+            if (data.code === 200) {
+                showToast('考试已强制结束', 'ok');
+                openExamDetail(currentDetailEid);
+            } else {
+                showToast('结束失败: ' + (data.msg || ''), 'err');
+            }
+        } catch (e) {
+            showToast('请求失败: ' + e.message, 'err');
+        }
+    }
+
+    async function exportExamMatrixCSV() {
+        if (!currentDetailEid) return;
+        try {
+            const resp = await fetch(`/api/exams/${encodeURIComponent(currentDetailEid)}/matrix.csv`);
+            if (resp.ok) {
+                const blob = await resp.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `exam_${currentDetailEid}_matrix.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+                showToast('成绩矩阵已导出', 'ok');
+            } else {
+                showToast('导出失败：HTTP ' + resp.status, 'err');
+            }
+        } catch (e) {
+            showToast('导出失败: ' + e.message, 'err');
+        }
+    }
+
+    function _bindExamDetailTabs() {
+        const tabs = $('exDetailTabs');
+        if (!tabs) return;
+        tabs.querySelectorAll('.tab-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const tab = btn.dataset.tab;
+                tabs.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('tab-active'));
+                btn.classList.add('tab-active');
+                $('exTabProblems').classList.toggle('tab-active', tab === 'problems');
+                $('exTabMatrix').classList.toggle('tab-active', tab === 'matrix');
+                $('exTabEvents').classList.toggle('tab-active', tab === 'events');
+            });
+        });
+    }
+
+    // ============ 初始化 ============
+    function init() {
+        renderTopUser();
+
+        const isAdmin = currentUser && currentUser.role === 'admin';
+        if (!currentUser) {
+            showToast('请先登录', 'warn');
+            setTimeout(() => openAuth('login'), 300);
+        } else {
+            loadExams();
+        }
+
+        if (!isAdmin) {
+            const adminBar = $('adminToolbarRight');
+            if (adminBar) adminBar.innerHTML = `<button id="refreshBtn" class="btn btn-sm" type="button" style="background:#f5f5f5;color:#555;">&#128260; 刷新</button>`;
+        }
+
+        $('searchBtn').onclick = () => {
+            currentKeyword = $('keywordInput').value.trim();
+            loadExams();
+        };
+        $('resetSearchBtn').onclick = () => {
+            $('keywordInput').value = '';
+            currentKeyword = '';
+            loadExams();
+        };
+        $('keywordInput').addEventListener('keydown', e => {
+            if (e.key === 'Enter') $('searchBtn').click();
+        });
+
+        $('refreshBtn') && ($('refreshBtn').onclick = loadExams);
+        $('newExamBtn') && ($('newExamBtn').onclick = () => openExamModal('new'));
+        $('exPublishBtn') && ($('exPublishBtn').onclick = publishExamScores);
+        $('exExtendBtn') && ($('exExtendBtn').onclick = extendExam);
+        $('exForceEndBtn') && ($('exForceEndBtn').onclick = forceEndExam);
+        $('exExportMatrixBtn') && ($('exExportMatrixBtn').onclick = exportExamMatrixCSV);
+
+        $('examCloseBtn').onclick = closeExamModal;
+        $('examModalMask').addEventListener('click', e => {
+            if (e.target.id === 'examModalMask') closeExamModal();
+        });
+        $('examCancelBtn').onclick = closeExamModal;
+        $('examSaveBtn').onclick = saveExam;
+
+        $('examDetailCloseBtn').onclick = closeExamDetail;
+        $('examDetailMask').addEventListener('click', e => {
+            if (e.target.id === 'examDetailMask') closeExamDetail();
+        });
+        $('examDetailCancelBtn').onclick = closeExamDetail;
+        _bindExamDetailTabs();
+
+        // 认证弹窗复用绑定
+        $('authCloseBtn').onclick = closeAuth;
+        $('authModalMask').addEventListener('click', e => {
+            if (e.target.id === 'authModalMask') closeAuth();
+        });
+        $('authToggle').onclick = () => openAuth(authMode === 'login' ? 'register' : 'login');
+        $('authSubmit').onclick = submitAuth;
+        $('authPassword').addEventListener('keydown', e => {
+            if (e.key === 'Enter') submitAuth();
+        });
+        $('authUsername').addEventListener('keydown', e => {
+            if (e.key === 'Enter') $('authPassword').focus();
+        });
+        toggleEye('eyePwd', 'authPassword', 'eyePwdIcon');
+        toggleEye('eyePwd2', 'authPassword2', 'eyePwd2Icon');
+        $('authPassword').addEventListener('input', () => {
+            if (authMode === 'register') renderStrength($('authPassword').value, $('authPassword2').value);
+        });
+        $('authPassword2').addEventListener('input', () => {
+            renderStrength($('authPassword').value, $('authPassword2').value);
+        });
+        $('authPassword2').addEventListener('keydown', e => {
+            if (e.key === 'Enter') submitAuth();
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

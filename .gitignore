@@ -1,0 +1,51 @@
+# ============================================================
+# OJ 调试平台 .gitignore
+# 只保留生产代码 + 必要交付物；以下全部临时/本地文件不入库
+# ============================================================
+
+# ---- Python 缓存 ----
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+webapp/__pycache__/
+oj_judge/__pycache__/
+
+# ---- 本地数据库与日志（平台运行时产生，不该入库） ----
+data/
+logs/
+user.db
+*.log
+_r_*.txt
+_r_server.log
+
+# ---- 前序调试 / 冒烟 / 爬虫临时脚本（下划线前缀全部视为临时）----
+_*.py
+_*.html
+_*.out
+_probe_*
+_dump_*
+_tmp_*
+_v2b_*
+_v3_*
+_verify_*
+_smoke_*.py
+
+# ---- 所有以前的老冒烟脚本（已经被 smoke_tests_v6.py 替代）----
+test_*.py
+_smoke_*.py
+
+# ---- 本地 IDE / 沙箱产物 ----
+.trae/
+.idea/
+.vscode/
+*.swp
+
+# ---- 打包 / 环境 ----
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+env/
