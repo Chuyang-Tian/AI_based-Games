@@ -1,0 +1,1360 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>判题 - {{ problem.title | default('题目不存在') }} - OJ 调试平台</title>
+    <link rel="stylesheet" href="{{ static_url('style.css') }}">
+    <link rel="stylesheet" href="/static/codemirror/codemirror.min.css">
+    <script src="/static/codemirror/codemirror.min.js"></script>
+    <script src="/static/codemirror/python.min.js"></script>
+    <script src="/static/codemirror/clike.min.js"></script>
+    <script src="/static/codemirror/javascript.min.js"></script>
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-inner">
+            <div class="topbar-title">
+                <span class="topbar-title-icon">&#128187;</span>
+                <span>OJ 调试平台</span>
+            </div>
+            <div class="topbar-info" id="topUserArea">
+                <span class="topbar-tag">独立判题页</span>
+                <span id="topStatusBox"></span>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="page-subheader" style="padding:10px 14px;gap:6px;">
+            <div class="subh-breadcrumb">
+                <a href="/">&#127968; 判题首页</a>
+                <span>&rsaquo;</span>
+                <a href="/problems" style="color:#5e97e9;text-decoration:none;">{% if current_user and current_user.is_admin %}🗂 题目管理{% else %}📚 题库{% endif %}</a>
+                <span>&rsaquo;</span>
+                <span class="subh-cur">&#128450; {{ problem.id }}：{{ problem.title }}</span>
+                {% if exam_ctx %}<span style="margin-left:8px;padding:3px 10px;border-radius:999px;background:#ffebee;color:#c62828;font-size:12px;font-weight:600;">&#128221; 考试中：{{ exam_ctx.title or ('#' ~ exam_ctx.id) }}</span>
+                {% elif assignment_ctx %}<span style="margin-left:8px;padding:3px 10px;border-radius:999px;background:#e3f2fd;color:#1565c0;font-size:12px;font-weight:600;">&#128214; 作业中：{{ assignment_ctx.title or ('#' ~ assignment_ctx.id) }}</span>
+                {% endif %}
+            </div>
+            <div class="subh-pill-group">
+                <a href="/submissions" class="subh-pill">📋 {% if current_user and current_user.is_admin %}提交日志{% else %}我的提交{% endif %}</a>
+                <a href="/classes" class="subh-pill">🎓 {% if current_user and current_user.is_admin %}班级管理{% else %}我的班级{% endif %}</a>
+                <a href="/assignments" class="subh-pill">📚 {% if current_user and current_user.is_admin %}作业中心{% else %}我的作业{% endif %}</a>
+                <a href="/exams" class="subh-pill">📝 {% if current_user and current_user.is_admin %}考试中心{% else %}我的考试{% endif %}</a>
+                <a href="/problems" class="subh-pill active-subh">{% if current_user and current_user.is_admin %}🗂 题目管理{% else %}📚 题库{% endif %}</a>
+                {% if current_user and current_user.is_admin %}
+                <a href="/users" class="subh-pill">👥 用户管理</a>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if exam_ctx %}
+        <div class="exam-countdown-banner" id="examCountdownBanner">
+            <div class="ctx-banner-icon">&#128221;</div>
+            <div class="ctx-banner-body">
+                <div class="ctx-banner-title"><b>当前考试：{{ exam_ctx.title or ('考试 #' ~ exam_ctx.id) }}</b></div>
+                <div class="ctx-banner-desc">
+                    您正在参加本场考试，所有提交将被记录用于评分。剩余时间：
+                    <span id="examCountdownText" style="font-weight:700;font-size:15px;color:#fff3e0;">--:--:--</span>
+                    <span id="examCountdownEndedHint" style="display:none;color:#ffcdd2;margin-left:8px;"><b>考试已结束，请尽快交卷</b></span>
+                </div>
+            </div>
+            <div class="ctx-banner-actions">
+                <a href="/exams/{{ exam_ctx.id }}" class="btn btn-outline btn-sm" style="border-color:#ffccbc;color:#fff8e1;">&#8592; 返回考试页</a>
+            </div>
+        </div>
+        {% endif %}
+        {% if assignment_ctx %}
+        <div class="ctx-banner ctx-banner-assignment">
+            <div class="ctx-banner-icon">&#128214;</div>
+            <div class="ctx-banner-body">
+                <div class="ctx-banner-title"><b>当前作业：{{ assignment_ctx.title or ('作业 #' ~ assignment_ctx.id) }}</b></div>
+                <div class="ctx-banner-desc">
+                    您正在从作业上下文中进入该题目，提交将自动计入作业成绩。
+                    {% if assignment_ctx.start_at %}&nbsp;开始：{{ assignment_ctx.start_at }}{% endif %}
+                    {% if assignment_ctx.end_at %}&nbsp;截止：{{ assignment_ctx.end_at }}{% endif %}
+                </div>
+            </div>
+            <div class="ctx-banner-actions">
+                <a href="/assignments/{{ assignment_ctx.id }}" class="btn btn-outline btn-sm">&#8592; 返回作业详情</a>
+            </div>
+        </div>
+        {% endif %}
+
+        <section class="card judge-header-card">
+            <div class="card-header">
+                <div class="card-title">
+                    <span class="card-title-dot"></span>
+                    <span>&#128214; <span id="problemTitleText">{{ problem.title }}</span></span>
+                </div>
+                <div style="display:flex;gap:8px;align-items:center;">
+                    <span class="pl-pid-badge" style="font-size:12px;padding:4px 8px;">ID: {{ problem.id }}</span>
+                    {% if problem.difficulty %}
+                    <span class="pl-diff-tag {{ 'pl-diff-easy' if problem.difficulty=='简单' else 'pl-diff-mid' if problem.difficulty=='中等' else 'pl-diff-hard' }}" style="margin:0;">{{ problem.difficulty }}</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="card-body">
+                <div style="margin-bottom:10px;">
+                    {% for t in (problem.tags or [])[:10] %}
+                    <span class="pl-tag-chip" style="margin-right:4px;">{{ t }}</span>
+                    {% endfor %}
+                </div>
+                <div class="pl-meta-grid" style="display:grid;grid-template-columns:140px 1fr 1fr;gap:12px;margin-bottom:12px;">
+                    <div class="stat-item" style="background:#fafafa;border:1px solid #eee;border-radius:10px;padding:10px 14px;">
+                        <div class="stat-label" style="color:#888;font-size:12px;">时间限制</div>
+                        <div class="stat-value" style="color:#1976d2;font-weight:700;font-size:20px;">{{ problem.time_limit }} s</div>
+                    </div>
+                    <div class="stat-item" style="background:#fafafa;border:1px solid #eee;border-radius:10px;padding:10px 14px;">
+                        <div class="stat-label" style="color:#888;font-size:12px;">内存限制</div>
+                        <div class="stat-value" style="color:#2e7d32;font-weight:700;font-size:20px;">{{ problem.memory_limit }} MB</div>
+                    </div>
+                    <div class="stat-item" style="background:#fafafa;border:1px solid #eee;border-radius:10px;padding:10px 14px;">
+                        <div class="stat-label" style="color:#888;font-size:12px;">出题 / 来源</div>
+                        <div class="stat-value" style="color:#555;font-weight:600;font-size:15px;">{{ problem.author or 'system' }} / {{ problem.source or 'N/A' }}</div>
+                    </div>
+                </div>
+                <div style="font-size:14px;line-height:1.75;color:#333;">
+                    {% if problem.description %}
+                    <h4 style="margin:8px 0 6px 0;">&#128221; 题目描述</h4>
+                    <div style="white-space:pre-wrap;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:10px 14px;">{{ problem.description }}</div>
+                    {% endif %}
+                    {% if problem.input_description %}
+                    <h4 style="margin:12px 0 6px 0;">&#128228; 输入描述</h4>
+                    <div style="white-space:pre-wrap;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:10px 14px;">{{ problem.input_description }}</div>
+                    {% endif %}
+                    {% if problem.output_description %}
+                    <h4 style="margin:12px 0 6px 0;">&#127919; 输出描述</h4>
+                    <div style="white-space:pre-wrap;background:#fafafa;border:1px solid #eee;border-radius:8px;padding:10px 14px;">{{ problem.output_description }}</div>
+                    {% endif %}
+                    {% if problem.constraints %}
+                    <h4 style="margin:12px 0 6px 0;">&#9881;&#65039; 数据范围与提示</h4>
+                    <div style="white-space:pre-wrap;background:#fff8e1;border:1px solid #ffe082;border-radius:8px;padding:10px 14px;">{{ problem.constraints }}{% if problem.hint %}
+
+&#128161; {{ problem.hint }}{% endif %}</div>
+                    {% endif %}
+                </div>
+            </div>
+        </section>
+
+        <div class="main-grid">
+            <section class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="card-title-dot"></span>
+                        <span>&#128220; 代码编辑</span>
+                    </div>
+                    <div style="display:flex;gap:8px;align-items:center;">
+                        <label style="font-size:13px;color:#666;">语言：</label>
+                        <select id="languageSelect" class="form-input" style="width:auto;padding:6px 10px;">
+                            {% for lang in enabled_languages %}
+                            <option value="{{ lang.name }}"
+                                    data-default-tl="{{ lang.default_time_limit }}"
+                                    data-default-ml="{{ lang.default_memory_limit }}">{{ lang.name }}{% if lang.is_builtin %}&#160;★{% endif %}</option>
+                            {% endfor %}
+                        </select>
+                        <button id="resetBtn" class="btn btn-secondary btn-sm" type="button">
+                            &#8634; 重置模板
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="code-editor-wrap">
+                        <div class="code-toolbar">
+                            <div class="config-group">
+                                {% if current_user and (current_user.is_admin or problem.allow_user_config_runtime) %}
+                                <div class="config-item">
+                                    <label for="timeLimit">时间(s)</label>
+                                    <input type="number" id="timeLimit" min="0.1" max="30" step="0.1" value="{{ problem.time_limit }}">
+                                </div>
+                                <div class="config-item">
+                                    <label for="memLimit">内存(MB)</label>
+                                    <input type="number" id="memLimit" min="8" max="1024" step="8" value="{{ problem.memory_limit }}">
+                                </div>
+                                <div class="config-item">
+                                    <label for="compareMode">对比</label>
+                                    <select id="compareMode">
+                                        <option value="exact" selected>精确(行)</option>
+                                        <option value="trim">Trim(去首尾空格)</option>
+                                        <option value="numeric">数值(容差)</option>
+                                    </select>
+                                </div>
+                                {% else %}
+                                <div class="read-only-config-chip">
+                                    <span class="chip chip-time">⏱ {{ problem.time_limit }} s</span>
+                                    <span class="chip chip-mem">💾 {{ problem.memory_limit }} MB</span>
+                                    <span class="chip chip-compare">🔍 精确(行)</span>
+                                </div>
+                                {% endif %}
+                            </div>
+                            {% if not (current_user and (current_user.is_admin or problem.allow_user_config_runtime)) %}
+                            <div style="font-size:11.5px;color:#999;line-height:1.45;">
+                                判题配置（时/空/对比方式）由出题人预设，不可自定义。
+                            </div>
+                            {% endif %}
+                        </div>
+                        <textarea id="codeEditor" class="code-editor" spellcheck="false"
+                                  placeholder="// 在此输入你的代码...">{{ problem.template or '' }}</textarea>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="card-title-dot"></span>
+                        <span>&#128202; 测试用例</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="cases-panel">
+                        <div class="section-title-block" style="margin-bottom:8px;">
+                            <div class="section-title-text"><span style="color:#1565c0;">&#128227;</span> <b>&#128214; 一、公开样例（题目提供）</b> <span style="font-size:12px;color:#666;margin-left:6px;">由出题人提供，带详细解释；所有用户永久可见，用于理解题意</span></div>
+                        </div>
+                        <div class="cases-options" style="margin-bottom:12px;">
+                            <label class="checkbox-item">
+                                <input type="checkbox" id="useSamples" checked>
+                                <span>使用「公开样例」参与评测</span>
+                            </label>
+                        </div>
+                        <div class="cases-list" id="casesList"></div>
+                        <div id="customDebugSection" style="margin-top:18px;">
+                            <div class="section-title-block" style="margin-bottom:8px;">
+                                <div class="section-title-text"><span style="color:#e65100;">&#129514;</span> <b>&#129514; 二、自定义调试样例（创新点）</b> <span style="font-size:12px;color:#666;margin-left:6px;">由<span style="color:#e65100;font-weight:500;">你</span>临时填写的一组输入+期望输出，仅当前页面有效，不保存到数据库</span></div>
+                            </div>
+                            <div class="cases-options" style="margin-bottom:10px;border:1px solid #ffe0b2;background:#fff8e1;border-radius:8px;padding:8px 14px;">
+                                <div style="font-size:12.5px;color:#e65100;line-height:1.6;">
+                                    <b>&#9888;&#65039; 注意：</b>这里的「期望输出」由你自己填写，系统不保证正确性。评测时会直接按你写的期望来对比，方便你用一个简单的小例子一步步调试程序逻辑。
+                                </div>
+                            </div>
+                            <div class="cases-options" style="margin-bottom:8px;align-items:flex-start;">
+                                <label class="checkbox-item">
+                                    <input type="checkbox" id="useCustomCases" checked>
+                                    <span>使用「自定义调试样例」参与评测</span>
+                                </label>
+                                <label class="checkbox-item" style="margin-left:12px;">
+                                    <input type="checkbox" id="onlyCustomCases">
+                                    <span style="color:#e65100;font-weight:600;">仅评测自定义样例（完全跳过题目公开测试点）</span>
+                                </label>
+                                <button id="addCaseBtn" class="btn btn-accent btn-sm" type="button" style="margin-left:auto;">
+                                    &#43; 添加一组自定义调试样例
+                                </button>
+                            </div>
+                            <div id="customScopeHint" class="eval-scope-bar" style="margin-top:6px;">
+                                <b>评测范围预览（点击右上角「提交判题」后生效）：</b><br>
+                                包含 <span class="chip-inline" id="scopeSampleCount">0</span> 个公开样例
+                                + <span class="chip-inline" id="scopeCustomCount">0</span> 个自定义调试样例
+                                = <b><span id="scopeTotalCount">0</span></b> 个测试点
+                                <span id="scopeOnlyCustomTag" style="display:none;" class="chip-inline" style="background:#fff3e0;border-color:#ffcc80;color:#e65100;">仅自定义模式</span>
+                            </div>
+                        </div>
+                        <div id="caseVisibilityHint" style="margin-top:16px;border-radius:8px;padding:10px 14px;font-size:12.5px;">
+                            <b>当前「测试点可见范围」设置（决定下方判题结果展示）：</b><br>
+                            <span id="caseVisibilityHintText">加载中...</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <section class="card result-card">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span class="card-title-dot"></span>
+                        <span>&#127937; 判题结果</span>
+                    </div>
+                    <button id="submitBtn" class="btn btn-primary" type="button">
+                        &#9654; 提交判题
+                    </button>
+                </div>
+                <div class="card-body">
+                    <div id="resultArea">
+                        <div class="no-result">
+                            <div class="no-result-icon">&#128269;</div>
+                            <div class="no-result-text">点击右上角「提交判题」开始运行代码</div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+
+        <footer>
+            &copy; OJ 在线判题平台
+        </footer>
+    </main>
+
+    <!-- ============ 登录/注册弹窗 ============ -->
+    <div id="authModalMask" class="modal-mask" style="display:none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div id="authTitle" class="modal-title">登录</div>
+                <button id="authCloseBtn" class="modal-close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="authUsername">用户名</label>
+                    <input type="text" id="authUsername" class="form-input" placeholder="用户名 3-40 字符" autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label for="authPassword">密码 <span style="font-size:12px;color:#999;">（至少 6 位）</span></label>
+                    <div style="position:relative;">
+                        <input type="password" id="authPassword" class="form-input" placeholder="至少 6 位" autocomplete="current-password">
+                        <span id="eyePwd" class="pwd-eye" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;user-select:none;">&#128065;</span>
+                    </div>
+                    <div id="strengthBox" style="margin-top:6px;display:none;"></div>
+                </div>
+                <div id="registerGroup" style="display:none;">
+                    <div class="form-group">
+                        <label for="authPassword2">再次输入密码</label>
+                        <div style="position:relative;">
+                            <input type="password" id="authPassword2" class="form-input" placeholder="再次输入密码">
+                            <span id="eyePwd2" class="pwd-eye" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);cursor:pointer;user-select:none;">&#128065;</span>
+                        </div>
+                        <div id="confirmBox" style="margin-top:6px;font-size:12px;"></div>
+                    </div>
+                </div>
+                <div id="authErr" style="color:#c62828;font-size:13px;min-height:18px;"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="authToggle" class="btn btn-secondary" type="button">去注册</button>
+                <button id="authSubmit" class="btn btn-primary" type="button">登录</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toastBox"></div>
+
+    <script>
+    const PROBLEM_ID = {{ problem.id | tojson }};
+    const PROBLEM = {{ problem | tojson }};
+    const ENABLED_LANGS = {{ enabled_languages | tojson }};
+    const CURRENT_USER = {{ current_user | tojson }};
+    const IS_ADMIN = !!(CURRENT_USER && CURRENT_USER.is_admin);
+    const CAN_EDIT_CONFIG = IS_ADMIN || !!(PROBLEM && (PROBLEM.allow_user_config_runtime === true || PROBLEM.allow_user_config_runtime === 1 || PROBLEM.allow_user_config_runtime === '1'));
+    const CAN_USE_CUSTOM_DEBUG = IS_ADMIN || !!(PROBLEM && (typeof PROBLEM.allow_user_custom_debug_cases === 'undefined' ? true : (PROBLEM.allow_user_custom_debug_cases === true || PROBLEM.allow_user_custom_debug_cases === 1 || PROBLEM.allow_user_custom_debug_cases === '1')));
+    const TEST_CASE_VISIBILITY = (() => {
+        if (!PROBLEM) return 0;
+        const v = PROBLEM.test_case_visibility;
+        if (typeof v === 'number') return v;
+        if (PROBLEM.public_cases === true || PROBLEM.public_cases === 1 || PROBLEM.public_cases === '1') return 2;
+        return 0;
+    })();
+    const DEFAULT_TEMPLATES = {
+        'python': PROBLEM.template || 'a, b = map(int, input().split())\nprint(a + b)\n',
+        'java': PROBLEM.template || 'import java.util.*;\npublic class Main {\n    public static void main(String[] args) {\n        Scanner sc = new Scanner(System.in);\n        int a = sc.nextInt(), b = sc.nextInt();\n        System.out.println(a + b);\n    }\n}\n',
+        'cpp': PROBLEM.template || '#include <iostream>\nusing namespace std;\nint main() {\n    int a, b;\n    cin >> a >> b;\n    cout << a + b << endl;\n    return 0;\n}\n',
+        'c': PROBLEM.template || '#include <stdio.h>\nint main() {\n    int a, b;\n    scanf("%d %d", &a, &b);\n    printf("%d\\n", a + b);\n    return 0;\n}\n',
+        'javascript': PROBLEM.template || 'const readline = require("readline");\nconst rl = readline.createInterface({ input: process.stdin });\nrl.on("line", line => { const [a,b] = line.split(" ").map(Number); console.log(a+b); rl.close(); });\n',
+        'go': PROBLEM.template || 'package main\nimport "fmt"\nfunc main() {\n    var a, b int\n    fmt.Scan(&a, &b)\n    fmt.Println(a + b)\n}\n',
+        'rust': PROBLEM.template || 'use std::io;\nfn main() {\n    let mut s = String::new();\n    io::stdin().read_line(&mut s).unwrap();\n    let v: Vec<i32> = s.split_whitespace().map(|x|x.parse().unwrap()).collect();\n    println!("{}", v[0] + v[1]);\n}\n',
+    };
+    const LANG_MODE_MAP = {
+        'python': 'python',
+        'java': 'text/x-java',
+        'cpp': 'text/x-c++src',
+        'c': 'text/x-csrc',
+        'javascript': 'javascript',
+        'go': 'text/x-go',
+        'rust': 'text/x-rustsrc',
+    };
+    const ASSIGNMENT_CTX = {{ assignment_ctx | tojson if assignment_ctx else 'null' }};
+    const EXAM_CTX = {{ exam_ctx | tojson if exam_ctx else 'null' }};
+    let examCountdownTimer = null;
+
+    async function reportExamEvent(eventType, extra) {
+        if (!EXAM_CTX || !EXAM_CTX.id) return;
+        const now = Date.now();
+        if (typeof window.__examEvtLast === 'undefined') window.__examEvtLast = {};
+        const dedupKey = eventType + '|' + JSON.stringify(extra || {});
+        const lastT = window.__examEvtLast[dedupKey] || 0;
+        const minGap = (eventType === 'visibilitychange' || eventType === 'copy' || eventType === 'contextmenu') ? 2500 : 400;
+        if (now - lastT < minGap) return;
+        window.__examEvtLast[dedupKey] = now;
+        try {
+            await fetch(`/api/exams/${encodeURIComponent(EXAM_CTX.id)}/events`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(Object.assign({ event: eventType, ts: now, problem_id: PROBLEM_ID }, extra || {})),
+            });
+        } catch (_) {}
+    }
+    function startExamCountdown() {
+        if (!EXAM_CTX) return;
+        const endsAt = EXAM_CTX.user_window_ends_at || EXAM_CTX.ends_at;
+        if (!endsAt) return;
+        function update() {
+            const txt = $('examCountdownText');
+            const hint = $('examCountdownEndedHint');
+            if (!txt) return;
+            let target;
+            try {
+                const t = endsAt.replace(' ', 'T');
+                target = new Date(t).getTime();
+                if (isNaN(target)) target = new Date(endsAt).getTime();
+            } catch (_) { target = NaN; }
+            if (isNaN(target)) {
+                txt.textContent = endsAt;
+                return;
+            }
+            const diff = target - Date.now();
+            if (diff <= 0) {
+                txt.textContent = '00:00:00';
+                txt.style.color = '#ef9a9a';
+                if (hint) hint.style.display = '';
+                if (examCountdownTimer) { clearInterval(examCountdownTimer); examCountdownTimer = null; }
+                return;
+            }
+            const totalSec = Math.floor(diff / 1000);
+            const h = String(Math.floor(totalSec / 3600)).padStart(2, '0');
+            const m = String(Math.floor((totalSec % 3600) / 60)).padStart(2, '0');
+            const s = String(totalSec % 60).padStart(2, '0');
+            txt.textContent = `${h}:${m}:${s}`;
+            if (diff < 5 * 60 * 1000) {
+                txt.style.color = '#ffcdd2';
+            } else {
+                txt.style.color = '#fff3e0';
+            }
+        }
+        update();
+        examCountdownTimer = setInterval(update, 1000);
+    }
+    function bindExamEvents() {
+        if (!EXAM_CTX) return;
+        document.addEventListener('visibilitychange', () => {
+            reportExamEvent('visibilitychange', { visible: document.visibilityState });
+        });
+        document.addEventListener('copy', (e) => {
+            const sel = window.getSelection() ? window.getSelection().toString() : '';
+            reportExamEvent('copy', { length: sel ? sel.length : 0, preview: sel.substring(0, 80) });
+        });
+        document.addEventListener('contextmenu', (e) => {
+            reportExamEvent('contextmenu', { tag: e.target ? e.target.tagName : '' });
+        });
+    }
+
+    const $ = (id) => document.getElementById(id);
+    let customCases = [];
+    let caseCounter = 0;
+    let currentLang = ENABLED_LANGS && ENABLED_LANGS.length ? ENABLED_LANGS[0].name : 'python';
+    let codeEditorDom = null;
+    let cmEditor = null;
+    let currentUser = CURRENT_USER;
+
+    function escapeHtml(s) {
+        return String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+    }
+
+    function showToast(msg, level) {
+        level = level || 'info';
+        const box = $('toastBox');
+        if (!box) return;
+        const t = document.createElement('div');
+        const cls = { info:'bg-info', ok:'bg-ok', warn:'bg-warn', err:'bg-err' }[level] || 'bg-info';
+        t.className = 'toast ' + cls;
+        t.textContent = msg;
+        box.appendChild(t);
+        setTimeout(() => { t.classList.add('show'); }, 20);
+        setTimeout(() => { t.classList.remove('show'); setTimeout(() => t.remove(), 400); }, 2600);
+    }
+
+    // ============ 顶栏用户 ============
+    function renderTopUser() {
+        const box = $('topStatusBox');
+        if (!CURRENT_USER) {
+            box.innerHTML = `<button class="btn btn-outline btn-sm" onclick="openAuth('login')">登录 / 注册</button>`;
+            return;
+        }
+        const roleTag = CURRENT_USER.is_admin
+            ? `<span class="topbar-tag" style="background:#c62828;">管理员</span>`
+            : `<span class="topbar-tag" style="background:#2e7d32;">普通用户</span>`;
+        box.innerHTML = `${roleTag}<span class="topbar-username">${escapeHtml(CURRENT_USER.username)}</span>
+            <button class="btn btn-outline btn-sm" onclick="doLogout()">登出</button>`;
+    }
+    async function doLogout() {
+        try { await fetch('/api/auth/logout', { method:'POST' }); } catch(_) {}
+        location.href = '/';
+    }
+
+    // ============ 样例 ============
+    const SAMPLE_LOCKED_INPUT = "\ud83d\udd12 无权查看该测试点的样例输入（请联系管理员开放权限）";
+    const SAMPLE_LOCKED_OUTPUT = "\ud83d\udd12 无权查看该测试点的样例期望输出（请联系管理员开放权限）";
+    function renderCases() {
+        applyCustomDebugVisibility();
+        if (!CAN_USE_CUSTOM_DEBUG) {
+            customCases = [];
+        }
+        const list = $('casesList');
+        list.innerHTML = '';
+        caseCounter = 0;
+        const canSeeSample = true;
+        if ($('useSamples').checked && PROBLEM.samples) {
+            PROBLEM.samples.forEach((s, idx) => {
+                const sampleInput = canSeeSample ? (s.input || '') : SAMPLE_LOCKED_INPUT;
+                const sampleOutput = canSeeSample ? (s.output || '') : SAMPLE_LOCKED_OUTPUT;
+                list.appendChild(makeCaseElement({
+                    id: 'sample-' + idx,
+                    title: `公开样例 ${idx + 1}`,
+                    badge: { text: '公开样例', cls: 'badge-sample' },
+                    canRemove: false,
+                    input: sampleInput,
+                    output: sampleOutput,
+                    locked: false,
+                    readOnly: true,
+                    isSample: true,
+                    index: idx,
+                    explanation: s.explanation || '',
+                }));
+                caseCounter++;
+            });
+        }
+        if (CAN_USE_CUSTOM_DEBUG) {
+            customCases.forEach((c, idx) => {
+                list.appendChild(makeCaseElement({
+                    id: 'custom-' + idx,
+                    title: `调试样例 ${idx + 1}`,
+                    badge: { text: '自定义调试', cls: 'badge-custom' },
+                    canRemove: true,
+                    input: c.input,
+                    output: c.output,
+                    locked: false,
+                    isSample: false,
+                    index: idx,
+                }));
+                caseCounter++;
+            });
+        }
+        if (typeof updateScopeHint === 'function') updateScopeHint();
+    }
+    function makeCaseElement(cfg) {
+        const wrap = document.createElement('div');
+        wrap.className = 'case-item';
+        wrap.dataset.id = cfg.id;
+        const header = document.createElement('div');
+        header.className = 'case-item-header';
+        const titleSpan = document.createElement('span');
+        titleSpan.className = 'case-item-title';
+        titleSpan.innerHTML = `${cfg.title} <span class="case-badge ${cfg.badge.cls}">${cfg.badge.text}</span>`;
+        header.appendChild(titleSpan);
+        if (cfg.canRemove) {
+            const rm = document.createElement('button');
+            rm.type = 'button'; rm.className = 'remove-case-btn'; rm.textContent = '删除';
+            rm.onclick = () => { customCases.splice(cfg.index, 1); renderCases(); };
+            header.appendChild(rm);
+        }
+        wrap.appendChild(header);
+        const body = document.createElement('div'); body.className = 'case-item-body';
+        const inBlock = document.createElement('div'); inBlock.className = 'io-block';
+        inBlock.innerHTML = `<label>输入 Input</label>`;
+        const inTA = document.createElement('textarea'); inTA.spellcheck = false;
+        inTA.value = cfg.input || ''; inTA.placeholder = '输入数据...';
+        if (cfg.locked || cfg.readOnly) { inTA.readOnly = true; inTA.classList.add('locked-cell'); }
+        if (!cfg.locked && !cfg.readOnly) {
+            inTA.oninput = () => {
+                if (cfg.isSample) PROBLEM.samples[cfg.index].input = inTA.value;
+                else customCases[cfg.index].input = inTA.value;
+                if (typeof updateScopeHint === 'function') updateScopeHint();
+            };
+        }
+        inBlock.appendChild(inTA);
+        const outBlock = document.createElement('div'); outBlock.className = 'io-block';
+        outBlock.innerHTML = `<label>期望输出 Expected</label>`;
+        const outTA = document.createElement('textarea'); outTA.spellcheck = false;
+        outTA.value = cfg.output || ''; outTA.placeholder = '期望输出...';
+        if (cfg.locked || cfg.readOnly) { outTA.readOnly = true; outTA.classList.add('locked-cell'); }
+        if (!cfg.locked && !cfg.readOnly) {
+            outTA.oninput = () => {
+                if (cfg.isSample) PROBLEM.samples[cfg.index].output = outTA.value;
+                else customCases[cfg.index].output = outTA.value;
+                if (typeof updateScopeHint === 'function') updateScopeHint();
+            };
+        }
+        outBlock.appendChild(outTA);
+        body.appendChild(inBlock); body.appendChild(outBlock);
+        if (cfg.isSample && cfg.explanation != null && cfg.explanation !== '') {
+            const explBlock = document.createElement('div');
+            explBlock.className = 'io-block';
+            explBlock.style.cssText = 'flex-basis:100%;margin-top:8px;';
+            explBlock.innerHTML = `<label style="color:#1565c0;font-weight:500;">&#128221; 样例解释 Explanation</label>`;
+            const explDiv = document.createElement('div');
+            explDiv.className = 'sample-explanation-box';
+            explDiv.style.cssText = 'background:#e3f2fd;border:1px solid #bbdefb;border-radius:6px;padding:10px 14px;white-space:pre-wrap;word-wrap:break-word;font-size:13px;color:#0d47a1;line-height:1.6;margin-top:4px;';
+            explDiv.textContent = cfg.explanation || '';
+            explBlock.appendChild(explDiv);
+            body.appendChild(explBlock);
+        }
+        wrap.appendChild(body);
+        return wrap;
+    }
+    function applyCustomDebugVisibility() {
+        const sec = $('customDebugSection');
+        if (!sec) return;
+        if (!CAN_USE_CUSTOM_DEBUG) {
+            sec.style.display = 'none';
+            customCases = [];
+        } else {
+            sec.style.display = '';
+        }
+        const addBtn = $('addCaseBtn');
+        if (addBtn) addBtn.style.display = CAN_USE_CUSTOM_DEBUG ? '' : 'none';
+    }
+    function applyCaseVisibilityHint() {
+        const hintWrap = $('caseVisibilityHint');
+        const hintText = $('caseVisibilityHintText');
+        if (!hintWrap || !hintText) return;
+        if (TEST_CASE_VISIBILITY === 0) {
+            hintWrap.style.background = '#fdecea';
+            hintWrap.style.border = '1px solid #f5c2c0';
+            hintWrap.style.color = '#b71c1c';
+            hintText.innerHTML = '&#128274; <b>全隐藏模式</b>：判题结果的<b>测试点明细将整体隐藏</b>（你完全看不到，避免误导），只显示通过数量和总体状态。';
+        } else if (TEST_CASE_VISIBILITY === 1) {
+            hintWrap.style.background = '#fff8e1';
+            hintWrap.style.border = '1px solid #ffe082';
+            hintWrap.style.color = '#e65100';
+            hintText.innerHTML = '&#9989; <b>本人提交后可见</b>：仅<b>该提交本人</b>或<b>管理员</b>可见测试点明细（受各字段精细权限控制，未授权的显示&#128274;占位）。';
+        } else {
+            hintWrap.style.background = '#e8f5e9';
+            hintWrap.style.border = '1px solid #a5d6a7';
+            hintWrap.style.color = '#2e7d32';
+            hintText.innerHTML = '&#127757; <b>始终公开</b>：该题目提交的测试点日志对<b>所有已登录用户</b>可见。';
+        }
+    }
+    function collectCustomCases() {
+        const cases = [];
+        customCases.forEach((_, idx) => {
+            const wrap = document.querySelector(`.case-item[data-id="custom-${idx}"]`);
+            if (!wrap) return;
+            const tas = wrap.querySelectorAll('textarea');
+            cases.push({ input: tas[0].value, output: tas[1].value });
+        });
+        return cases;
+    }
+    function collectSampleOverrides() {
+        if (!PROBLEM.samples) return [];
+        const overrides = [];
+        PROBLEM.samples.forEach((_, idx) => {
+            const wrap = document.querySelector(`.case-item[data-id="sample-${idx}"]`);
+            if (!wrap) return;
+            const tas = wrap.querySelectorAll('textarea');
+            overrides.push({ input: tas[0].value, output: tas[1].value });
+        });
+        return overrides;
+    }
+
+    // ============ 语言下拉 ============
+    function initLanguage() {
+        const sel = $('languageSelect');
+        if (!sel || !ENABLED_LANGS || !ENABLED_LANGS.length) return;
+        if (ENABLED_LANGS.length > 0) {
+            currentLang = ENABLED_LANGS[0].name;
+            sel.value = currentLang;
+        }
+        sel.addEventListener('change', () => {
+            currentLang = sel.value;
+            const tpl = DEFAULT_TEMPLATES[currentLang];
+            if (cmEditor) {
+                cmEditor.setValue(tpl || '');
+                const m = LANG_MODE_MAP[currentLang] || currentLang;
+                try { cmEditor.setOption('mode', m); } catch(_) {}
+            } else {
+                codeEditorDom.value = tpl || '';
+            }
+        });
+    }
+
+    // ============ 结果渲染 ============
+    function statusClass(s) {
+        const map = { AC:'ac', WA:'wa', RE:'re', TLE:'tle', MLE:'mle', CE:'ce', SE:'se', PENDING:'pending', RUNNING:'running' };
+        return map[s] || 'se';
+    }
+    function isLockedStr(s) {
+        return typeof s === 'string' && s.length >= 2 && s.charCodeAt(0) === 0x1F512;
+    }
+    function wrapLocked(s) {
+        if (!s) return '';
+        if (isLockedStr(s)) {
+            return `<pre class="locked-cell">${escapeHtml(s)}</pre>`;
+        }
+        return `<pre>${escapeHtml(s)}</pre>`;
+    }
+    function renderResult(data, opts) {
+        opts = opts || {};
+        const area = $('resultArea');
+        if (data.error) {
+            if (data.code === 401) {
+                area.innerHTML = `<div class="no-result">
+                    <div class="no-result-icon" style="color:#c62828;">&#128274;</div>
+                    <div class="no-result-text" style="color:#c62828;font-weight:600;">
+                        ${escapeHtml(data.error)}
+                    </div>
+                    <div style="margin-top:12px;">
+                        <button class="btn btn-primary" onclick="openAuth('login')">&#128274; 立即登录</button>
+                    </div>
+                </div>`;
+                return;
+            }
+            area.innerHTML = `<div class="no-result">
+                <div class="no-result-icon">&#9888;&#65039;</div>
+                <div class="no-result-text" style="color:#c62828;">${escapeHtml(data.error)}</div>
+            </div>`;
+            return;
+        }
+        const canSeeDetail = (typeof opts.can_see_detail === 'boolean')
+            ? opts.can_see_detail
+            : (IS_ADMIN || TEST_CASE_VISIBILITY !== 0);
+        const s = data.summary;
+        const passed = s.passed_cases, total = s.total_cases;
+        const pct = total ? Math.round((passed / total) * 100) : 0;
+        const sc = statusClass(s.status);
+        let compileBlock = '';
+        if (s.status === 'CE' && data.compile_message) {
+            compileBlock = `<div class="detail-block" style="grid-column:1/-1;">
+                <h5>&#9888;&#65039; 编译错误信息</h5>
+                ${wrapLocked(data.compile_message)}
+            </div>`;
+        }
+        let caseHtml = '';
+        if (!canSeeDetail) {
+            caseHtml = `<div class="case-detail-hidden-block" style="background:#fafafa;border:1px dashed #bdbdbd;border-radius:10px;padding:24px 28px;text-align:center;margin:12px 0;">
+                <div style="font-size:32px;color:#9e9e9e;margin-bottom:8px;">&#128274;</div>
+                <div style="font-size:14.5px;color:#757575;font-weight:500;margin-bottom:4px;">测试点明细已被管理员设置为「完全隐藏」</div>
+                <div style="font-size:12.5px;color:#9e9e9e;line-height:1.7;">当前题目可见范围=0（全隐藏模式），普通用户看不到任何测试点的输入/期望/实际/报错信息，<br>避免因&#128274;占位引发空值误解。您仍可以通过上方通过数量和总体状态判断程序的正确性。</div>
+            </div>`;
+        } else if (data.case_results && data.case_results.length) {
+            caseHtml = data.case_results.map((cr, i) => {
+                const crsc = statusClass(cr.status);
+                const isWA = cr.status === 'WA' || cr.status === 'PC';
+                const needDiff = isWA && (cr.expected_output != null || cr.actual_output != null);
+                const autoOpen = isWA ? ' open' : '';
+                const errBlock = cr.error_message ? `<div class="detail-block" style="grid-column:1/-1;">
+                    <h5>&#9888;&#65039; 错误 / 差异信息</h5>
+                    ${wrapLocked(cr.error_message)}
+                </div>` : '';
+                const diffBlock = needDiff ? `<div class="detail-block" style="grid-column:1/-1;">
+                    <h5 style="color:#c62828;">&#128200; 逐行差异对比 Line-by-Line Diff</h5>
+                    ${buildLineByLineDiff(cr.expected_output || '', cr.actual_output || '')}
+                </div>` : '';
+                return `<div class="cr-item ${crsc}${autoOpen}">
+                    <div class="cr-header" onclick="this.parentElement.classList.toggle('open')">
+                        <span class="cr-status bg-${crsc}">${cr.status}</span>
+                        <span class="cr-name">
+                            ${cr.is_sample ? '&#128227;' : (cr.is_custom ? '&#129514;' : '&#9999;&#65039;')}
+                            用例 ${i + 1}${cr.is_sample ? '（公开样例）' : (cr.is_custom ? '（自定义调试）' : '')}
+                        </span>
+                        <span class="cr-meta">&#9201; ${cr.time_ms} ms</span>
+                        <span class="cr-meta">&#128190; ${cr.memory_mb} MB</span>
+                        <span class="cr-toggle">&#9660;</span>
+                    </div>
+                    <div class="cr-body">
+                        <div class="cr-detail-grid">
+                            <div class="detail-block">
+                                <h5>&#128228; 输入 Input</h5>
+                                ${wrapLocked(cr.input_data)}
+                            </div>
+                            <div class="detail-block">
+                                <h5>&#127919; 期望 Expected</h5>
+                                ${wrapLocked(cr.expected_output)}
+                            </div>
+                            <div class="detail-block">
+                                <h5>&#128221; 你的输出 Actual</h5>
+                                ${wrapLocked(cr.actual_output)}
+                            </div>
+                            <div class="detail-block">
+                                <h5>&#128202; 资源 Resource</h5>
+                                <pre>用时 : ${cr.time_ms} ms
+内存 : ${cr.memory_mb} MB
+状态 : ${cr.status} - ${escapeHtml(cr.status_desc || '')}</pre>
+                            </div>
+                            ${errBlock}
+                            ${diffBlock}
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+        } else {
+            caseHtml = `<div class="case-detail-hidden-block" style="background:#fff3e0;border:1px dashed #ffcc80;border-radius:10px;padding:18px 24px;text-align:center;margin:12px 0;color:#e65100;">无测试点明细</div>`;
+        }
+        const caseCount = canSeeDetail ? (data.case_results ? data.case_results.length : 0) : '已隐藏';
+        area.innerHTML = `
+            <div class="result-summary">
+                <div class="status-badge bg-${sc}">
+                    <div class="status-code">${s.status}</div>
+                    <div class="status-desc">${escapeHtml(s.description)}</div>
+                </div>
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <div class="stat-value">${passed}/${total}</div>
+                        <div class="stat-label">通过用例</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value ms">${s.total_time_ms}</div>
+                        <div class="stat-label">总耗时</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value mb">${s.max_memory_mb}</div>
+                        <div class="stat-label">峰值内存</div>
+                    </div>
+                </div>
+                <div class="progress-wrap">
+                    <div class="progress-label"><span>通过率</span><span>${pct}%</span></div>
+                    <div class="progress-bar"><div class="progress-fill" style="width:${pct}%"></div></div>
+                </div>
+            </div>
+            ${compileBlock ? `<div style="margin-bottom:14px;"><div class="cr-detail-grid single">${compileBlock}</div></div>` : ''}
+            <div class="case-section-title" style="padding:6px 2px;font-size:13px;color:#616161;margin-bottom:6px;">&#128202; 测试点明细（${caseCount}）</div>
+            <div class="case-results">${caseHtml}</div>
+        `;
+    }
+    function renderPending() {
+        $('resultArea').innerHTML = `
+            <div class="no-result">
+                <div class="no-result-icon loading-dots" style="color:#1976d2;">&#9203;</div>
+                <div class="no-result-text" style="color:#1976d2;">判题中，请稍候</div>
+            </div>`;
+    }
+
+    function buildLineByLineDiff(expectedText, actualText) {
+        const expLines = (expectedText || '').replace(/\r\n/g, '\n').split('\n');
+        const actLines = (actualText || '').replace(/\r\n/g, '\n').split('\n');
+        const maxLen = Math.max(expLines.length, actLines.length);
+        let rows = [];
+        const pad = (n, w) => String(n).padStart(w, ' ');
+        for (let i = 0; i < maxLen; i++) {
+            const el = i < expLines.length ? expLines[i] : null;
+            const al = i < actLines.length ? actLines[i] : null;
+            if (el === al) {
+                rows.push(`<div class="diff-line same">
+                    <div class="diff-ln">${pad(i+1, 3)}</div>
+                    <div class="diff-exp same">${el != null ? escapeHtml(el) : ''}&nbsp;</div>
+                    <div class="diff-ln">${pad(i+1, 3)}</div>
+                    <div class="diff-act same">${al != null ? escapeHtml(al) : ''}&nbsp;</div>
+                </div>`);
+            } else if (el != null && al != null) {
+                rows.push(`<div class="diff-line both">
+                    <div class="diff-ln" style="background:#ffebee;">${pad(i+1, 3)}</div>
+                    <div class="diff-exp">${escapeHtml(el)}&nbsp;</div>
+                    <div class="diff-ln" style="background:#e8f5e9;">${pad(i+1, 3)}</div>
+                    <div class="diff-act">${escapeHtml(al)}&nbsp;</div>
+                </div>`);
+            } else if (el != null) {
+                rows.push(`<div class="diff-line missing">
+                    <div class="diff-ln" style="background:#ffebee;">${pad(i+1, 3)}</div>
+                    <div class="diff-exp">${escapeHtml(el)}&nbsp;</div>
+                    <div class="diff-ln" style="background:#fafafa;color:#bdbdbd;">---</div>
+                    <div class="diff-act" style="color:#9e9e9e;background:#fafafa;"><i>&#8722; 缺少此行</i></div>
+                </div>`);
+            } else {
+                rows.push(`<div class="diff-line extra">
+                    <div class="diff-ln" style="background:#fafafa;color:#bdbdbd;">---</div>
+                    <div class="diff-exp" style="color:#9e9e9e;background:#fafafa;"><i>&#43; 多余此行</i></div>
+                    <div class="diff-ln" style="background:#e8f5e9;">${pad(i+1, 3)}</div>
+                    <div class="diff-act">${escapeHtml(al)}&nbsp;</div>
+                </div>`);
+            }
+        }
+        if (maxLen === 0) {
+            rows.push(`<div class="diff-line same">
+                <div class="diff-ln">  1</div><div class="diff-exp same"><i>&#60;空&#62;</i></div>
+                <div class="diff-ln">  1</div><div class="diff-act same"><i>&#60;空&#62;</i></div>
+            </div>`);
+        }
+        return `<div class="diff-wrap">
+            <div class="diff-head">
+                <span style="background:#ffebee;color:#c62828;padding:2px 8px;border-radius:4px;font-weight:600;">&#8722; 期望输出 Expected</span>
+                <span style="margin:0 8px;color:#9e9e9e;">&#8644;</span>
+                <span style="background:#e8f5e9;color:#2e7d32;padding:2px 8px;border-radius:4px;font-weight:600;">&#43; 你的输出 Actual</span>
+            </div>
+            <div class="diff-body">${rows.join('')}</div>
+        </div>`;
+    }
+
+    function updateScopeHint() {
+        const useSamples = $('useSamples') && $('useSamples').checked;
+        const useCustom = $('useCustomCases') && $('useCustomCases').checked;
+        const onlyCustom = $('onlyCustomCases') && $('onlyCustomCases').checked;
+        let sampleCount = 0, customCount = 0;
+        if (PROBLEM.samples && !onlyCustom) {
+            sampleCount = useSamples ? PROBLEM.samples.length : 0;
+        } else if (onlyCustom) {
+            sampleCount = 0;
+        }
+        if (useCustom || onlyCustom) {
+            customCount = customCases.filter(c => c && ((typeof c.input==='string'?c.input.trim():'') || (typeof c.output==='string'?c.output.trim():''))).length;
+        }
+        const customWrap = document.querySelectorAll('.case-item[data-id^="custom-"]');
+        customWrap.forEach((wrap, idx) => {
+            const tas = wrap.querySelectorAll('textarea');
+            const inp = tas[0] ? tas[0].value.trim() : '';
+            const out = tas[1] ? tas[1].value.trim() : '';
+            if (inp || out) {
+                if (idx >= customCases.length || !(customCases[idx] && ((typeof customCases[idx].input==='string'?customCases[idx].input.trim():'') || (typeof customCases[idx].output==='string'?customCases[idx].output.trim():'')))) {
+                    customCount++;
+                }
+            }
+        });
+        if ($('scopeSampleCount')) $('scopeSampleCount').textContent = sampleCount;
+        if ($('scopeCustomCount')) $('scopeCustomCount').textContent = customCount;
+        if ($('scopeTotalCount')) $('scopeTotalCount').textContent = sampleCount + customCount;
+        if ($('scopeOnlyCustomTag')) $('scopeOnlyCustomTag').style.display = onlyCustom ? 'inline-block' : 'none';
+    }
+    async function refreshMe() {
+        try {
+            const r = await fetch('/api/auth/me');
+            if (r.ok) {
+                const d = await r.json();
+                if (d.code === 200) currentUser = d.data;
+            }
+        } catch(_) {}
+    }
+    async function showJudgeResultFromSubmission(sid, data) {
+        const statusStr = data.status || 'unknown';
+        const isError = statusStr === 'error';
+        const stCode = isError ? 'WA'
+            : (statusStr === 'success' ? 'AC'
+            : (statusStr === 'pending' ? 'PENDING' : statusStr.toUpperCase()));
+        let logData = null;
+        try {
+            const lr = await fetch(`/api/submissions/${sid}/log`);
+            const ld = await lr.json();
+            if (ld.code === 200) logData = ld.data;
+        } catch (_) { logData = null; }
+        const score = typeof data.score === 'number' ? data.score : (logData ? logData.score : 0);
+        const counts = typeof data.counts === 'number' ? data.counts : (logData ? logData.counts : 0);
+        const caseList = (logData && logData.details) ? logData.details : [];
+        const passCount = Math.floor(score / 10);
+        const totalCount = Math.floor(counts / 10);
+        let passRate = totalCount > 0 ? Math.round(passCount/totalCount*100) + '%' : '0%';
+        let sumTimeMs = 0;
+        let maxMemMb = 0;
+        caseList.forEach(c => {
+            const t = typeof c.time === 'number' ? Math.round(c.time*1000) : (typeof c.time_ms === 'number' ? c.time_ms : 0);
+            sumTimeMs += t;
+            const m = typeof c.memory === 'number' ? c.memory : (typeof c.memory_mb === 'number' ? c.memory_mb : 0);
+            if (m > maxMemMb) maxMemMb = m;
+        });
+        const summary = {
+            status: stCode,
+            description: { 'AC':'全部通过','WA':'答案错误','RE':'运行时错误','TLE':'超过时间限制','MLE':'超过内存限制','CE':'编译错误','SE':'系统错误','PENDING':'等待评测' }[stCode] || stCode,
+            passed_cases: passCount,
+            total_cases: totalCount,
+            pass_rate: `${passCount}/${totalCount} (${passRate})`,
+            total_time_ms: (typeof data.total_time_ms === 'number' && data.total_time_ms > 0) ? data.total_time_ms : sumTimeMs,
+            max_memory_mb: (typeof data.max_memory_mb === 'number' && data.max_memory_mb > 0) ? data.max_memory_mb : maxMemMb,
+            score: score,
+        };
+        const case_results = caseList.map((c, i) => ({
+            case_id: c.id != null ? c.id : (i + 1),
+            status: c.result || 'UNK',
+            status_desc: c.status_desc || c.result || '',
+            input_data: c.input_data || c.input || '',
+            expected_output: c.expected_output || c.expected || '',
+            actual_output: c.actual_output || c.actual || '',
+            time_ms: typeof c.time === 'number' ? Math.round(c.time*1000) : (typeof c.time_ms === 'number' ? c.time_ms : 0),
+            memory_mb: typeof c.memory === 'number' ? c.memory : (typeof c.memory_mb === 'number' ? c.memory_mb : 0),
+            error_message: c.error_message || '',
+            is_sample: (c.is_sample != null) ? !!c.is_sample : false,
+        }));
+        const canSee = logData && typeof logData.can_see_detail === 'boolean'
+            ? logData.can_see_detail
+            : (IS_ADMIN || TEST_CASE_VISIBILITY !== 0);
+        renderResult({
+            summary: summary,
+            error_message: data.error_info || '',
+            compile_message: (data.compile_info && data.compile_info.message) || '',
+            case_results: case_results,
+            cases: case_results,
+            submission_id: sid,
+        }, { can_see_detail: canSee });
+        showToast(`提交结果: ${summary.status}  (${passCount}/${totalCount} ${passRate})`,
+            summary.status === 'AC' ? 'ok' : 'warn');
+        await refreshMe();
+    }
+
+    // ============ 提交判题 ============
+    function getCurrentCode() {
+        if (cmEditor) return cmEditor.getValue() || '';
+        return codeEditorDom.value;
+    }
+    function setEditorValue(v) {
+        if (cmEditor) cmEditor.setValue(v || '');
+        else codeEditorDom.value = v || '';
+    }
+    async function submitJudge() {
+        if (!currentUser) {
+            openAuth('login');
+            showToast('请先登录再提交判题', 'warn');
+            return;
+        }
+        const code = getCurrentCode();
+        if (!code || !code.trim()) {
+            showToast('请先输入代码', 'warn');
+            return;
+        }
+        const useSamplesChecked = $('useSamples').checked;
+        const useCustomChecked = !!($('useCustomCases') && $('useCustomCases').checked);
+        const onlyCustomChecked = !!($('onlyCustomCases') && $('onlyCustomCases').checked);
+        const customCaseCount = customCases.filter(c => c && ((typeof c.input==='string'?c.input.trim():'') || (typeof c.output==='string'?c.output.trim():''))).length;
+        const problemTl = parseFloat(PROBLEM.time_limit) || 1.0;
+        const problemMl = parseInt(PROBLEM.memory_limit) || 128;
+        const effectiveUseSamples = useSamplesChecked && !onlyCustomChecked;
+        const effectiveUseCustom = useCustomChecked && (onlyCustomChecked || customCaseCount > 0);
+        if (onlyCustomChecked && customCaseCount === 0) {
+            btn.disabled = false;
+            btn.innerHTML = originalHTML;
+            showToast('「仅评测自定义」已勾选，但你还没有添加自定义样例。请先点击「+添加一组自定义调试样例」输入输入/期望输出。', 'err');
+            return;
+        }
+        if (!effectiveUseSamples && !effectiveUseCustom) {
+            btn.disabled = false;
+            btn.innerHTML = originalHTML;
+            showToast('请至少勾选一种评测范围：公开样例 或 自定义样例', 'warn');
+            return;
+        }
+        let useCustom = onlyCustomChecked || !useSamplesChecked || customCaseCount > 0;
+        if (CAN_EDIT_CONFIG) {
+            const tl = parseFloat($('timeLimit').value);
+            const ml = parseInt($('memLimit').value);
+            const cm = $('compareMode').value;
+            if (Math.abs(tl - problemTl) > 1e-6) useCustom = true;
+            if (ml !== problemMl) useCustom = true;
+            if (cm !== 'exact') useCustom = true;
+        }
+        const btn = $('submitBtn');
+        btn.disabled = true;
+        const originalHTML = btn.innerHTML;
+        btn.innerHTML = '&#9203; 提交中...';
+
+        if (useCustom) {
+            btn.innerHTML = '&#9203; 判题中...';
+            renderPending();
+            try {
+                let payloadCases = [];
+                if (effectiveUseCustom) {
+                    payloadCases = customCases
+                        .map((c, idx) => {
+                            const wrap = document.querySelector(`.case-item[data-id="custom-${idx}"]`);
+                            if (!wrap) {
+                                return { input: (typeof c.input==='string'?c.input:''), output: (typeof c.output==='string'?c.output:'') };
+                            }
+                            const tas = wrap.querySelectorAll('textarea');
+                            return {
+                                input: (tas[0] && tas[0].value != null) ? tas[0].value : (c.input || ''),
+                                output: (tas[1] && tas[1].value != null) ? tas[1].value : (c.output || ''),
+                            };
+                        })
+                        .filter(c => c && (c.input && c.input.trim() || c.output && c.output.trim()));
+                }
+                let sampleOverrides = [];
+                if (effectiveUseSamples && PROBLEM.samples) {
+                    sampleOverrides = collectSampleOverrides();
+                }
+                const body = {
+                    code: code,
+                    problem_id: PROBLEM_ID,
+                    custom_cases: payloadCases,
+                    use_samples: effectiveUseSamples,
+                    only_custom_cases: !!onlyCustomChecked,
+                    use_custom_cases: effectiveUseCustom,
+                };
+                if (ASSIGNMENT_CTX && ASSIGNMENT_CTX.id) body.assignment_id = ASSIGNMENT_CTX.id;
+                if (EXAM_CTX && EXAM_CTX.id) body.exam_id = EXAM_CTX.id;
+                if (CAN_EDIT_CONFIG) {
+                    body.time_limit = parseFloat($('timeLimit').value) || problemTl;
+                    body.memory_limit = parseInt($('memLimit').value) || problemMl;
+                    body.compare_mode = $('compareMode').value;
+                } else {
+                    body.time_limit = problemTl;
+                    body.memory_limit = problemMl;
+                    body.compare_mode = 'exact';
+                }
+                if (sampleOverrides.length && effectiveUseSamples) {
+                    body._sample_overrides = sampleOverrides;
+                }
+                const resp = await fetch('/api/judge', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body),
+                });
+                const payload = await resp.json();
+                if (payload.code !== 200) {
+                    renderResult({ error: (payload.msg || '请求失败') + ` (code=${payload.code})` });
+                    showToast(payload.msg || '提交失败', 'err');
+                } else {
+                    const result = payload.data || {};
+                    renderResult(result);
+                    if (result.summary) {
+                        showToast(`提交结果: ${result.summary.status}`,
+                            result.summary.status === 'AC' ? 'ok' : 'warn');
+                        await refreshMe();
+                    }
+                }
+            } catch (e) {
+                renderResult({ error: '请求失败: ' + e.message });
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = originalHTML;
+            }
+            return;
+        }
+
+        let sid = null;
+        let pollInterval = null;
+        let polled = 0;
+        try {
+            const bodyObj = { problem_id: PROBLEM_ID, language: currentLang, code: code };
+            if (ASSIGNMENT_CTX && ASSIGNMENT_CTX.id) bodyObj.assignment_id = ASSIGNMENT_CTX.id;
+            if (EXAM_CTX && EXAM_CTX.id) bodyObj.exam_id = EXAM_CTX.id;
+            if (CAN_EDIT_CONFIG) {
+                bodyObj.time_limit = parseFloat($('timeLimit').value) || problemTl;
+                bodyObj.memory_limit = parseInt($('memLimit').value) || problemMl;
+                bodyObj.compare_mode = $('compareMode').value;
+            }
+            const resp = await fetch('/api/submissions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(bodyObj),
+            });
+            const d = await resp.json();
+            if (d.code === 429) {
+                showToast('提交太频繁，请 1 分钟后再试', 'warn');
+                btn.disabled = false;
+                btn.innerHTML = originalHTML;
+                return;
+            }
+            if (d.code !== 200) {
+                renderResult({ error: (d.msg || '请求失败') + ` (code=${d.code})` });
+                showToast(d.msg || '提交失败', d.code >= 500 ? 'err' : 'warn');
+                if (d.code === 401) openAuth('login');
+                btn.disabled = false;
+                btn.innerHTML = originalHTML;
+                return;
+            }
+            sid = d.data.submission_id;
+            btn.innerHTML = '&#9203; 评测中...';
+            $('resultArea').innerHTML = `
+                <div class="pending-banner" style="margin-top:4px;">
+                    <span class="spin"></span>
+                    <span>&#9203; 评测中 PENDING · Submission #${escapeHtml(String(sid))} · 请稍候</span>
+                </div>
+                <div class="no-result">
+                    <div class="no-result-icon loading-dots" style="color:#1976d2;">&#9203;</div>
+                    <div class="no-result-text" style="color:#1976d2;">后台判题中，每 500ms 轮询一次结果...</div>
+                </div>`;
+            await new Promise(r => setTimeout(r, 500));
+            await new Promise((resolve) => {
+                pollInterval = setInterval(async () => {
+                    polled++;
+                    try {
+                        const r = await fetch(`/api/submissions/${sid}`);
+                        const dd = await r.json();
+                        if (dd.code === 200 && dd.data && dd.data.status !== 'pending') {
+                            clearInterval(pollInterval);
+                            pollInterval = null;
+                            await showJudgeResultFromSubmission(sid, dd.data);
+                            resolve();
+                        } else if (polled >= 20) {
+                            clearInterval(pollInterval);
+                            pollInterval = null;
+                            showToast('评测仍在后台进行，请稍后到「提交记录」查看结果', 'info');
+                            $('resultArea').innerHTML += `
+                                <div style="padding:14px;background:#fff3e0;border:1px solid #ffcc80;border-radius:10px;margin-top:10px;font-size:13px;color:#e65100;font-weight:600;">
+                                    ⚠️ 评测耗时较长，可在「提交记录」页面查看 Submission #${escapeHtml(String(sid))} 的最终结果。
+                                </div>`;
+                            resolve();
+                        }
+                    } catch (_) { /* ignore */ }
+                }, 500);
+            });
+        } catch (e) {
+            if (pollInterval) clearInterval(pollInterval);
+            renderResult({ error: '请求失败: ' + e.message });
+        } finally {
+            btn.disabled = false;
+            btn.innerHTML = originalHTML;
+        }
+    }
+
+    // ============ 登录/注册弹窗 ============
+    let authMode = 'login';
+    function openAuth(mode) {
+        authMode = mode || 'login';
+        $('authTitle').textContent = authMode === 'login' ? '登录' : '注册';
+        $('authSubmit').textContent = authMode === 'login' ? '登录' : '注册';
+        $('authToggle').textContent = authMode === 'login' ? '去注册' : '去登录';
+        $('registerGroup').style.display = authMode === 'register' ? 'block' : 'none';
+        $('authErr').textContent = '';
+        $('strengthBox').style.display = authMode === 'register' ? 'block' : 'none';
+        if (authMode === 'register') renderStrength($('authPassword').value, $('authPassword2').value);
+        $('authModalMask').style.display = 'flex';
+        setTimeout(() => $('authUsername').focus(), 100);
+    }
+    function closeAuth() { $('authModalMask').style.display = 'none'; }
+    async function submitAuth() {
+        const u = $('authUsername').value.trim();
+        const p = $('authPassword').value;
+        const p2 = $('authPassword2').value;
+        $('authErr').textContent = '';
+        if (!u) { $('authErr').textContent = '用户名不能为空'; return; }
+        if (!p || p.length < 6) { $('authErr').textContent = '密码至少 6 位'; return; }
+        if (authMode === 'register') {
+            if (p !== p2) { $('authErr').textContent = '两次输入的密码不一致'; return; }
+        }
+        const url = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+        try {
+            const resp = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username: u, password: p }),
+            });
+            const d = await resp.json();
+            if (d.code !== 200) { $('authErr').textContent = d.msg || '请求失败'; return; }
+            showToast(authMode === 'login' ? '登录成功' : '注册成功，已自动登录', 'ok');
+            closeAuth();
+            setTimeout(() => location.reload(), 300);
+        } catch (e) {
+            $('authErr').textContent = '网络错误: ' + e.message;
+        }
+    }
+    function renderStrength(pwd, pwd2) {
+        const sb = $('strengthBox');
+        const cb = $('confirmBox');
+        let level = 0;
+        if (pwd && pwd.length >= 6) level++;
+        if (/[A-Z]/.test(pwd) || /[a-z]/.test(pwd)) level++;
+        if (/\d/.test(pwd)) level++;
+        if (/[^A-Za-z0-9]/.test(pwd)) level++;
+        if (pwd && pwd.length >= 10) level++;
+        const cls = level <= 2 ? 'strength-low' : level <= 3 ? 'strength-mid' : 'strength-high';
+        const txt = ['极低','低','中','较高','高'][Math.min(level, 4)] || '极低';
+        sb.innerHTML = `<div class="strength-bar"><div class="strength-fill ${cls}" style="width:${level*20}%;"></div></div>
+            <div class="strength-text">强度：${txt} / 建议包含字母、数字、符号并 ≥10 位</div>`;
+        if (pwd2 !== undefined) {
+            if (!pwd && !pwd2) {
+                cb.textContent = '';
+            } else if (pwd === pwd2) {
+                cb.innerHTML = `<span style="color:#2e7d32;">✅ 两次输入一致</span>`;
+            } else {
+                cb.innerHTML = `<span style="color:#c62828;">❌ 两次输入不一致</span>`;
+            }
+        }
+    }
+
+    function initEditorFallback() {
+        codeEditorDom = $('codeEditor');
+        codeEditorDom.addEventListener('keydown', e => {
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                const ta = e.target;
+                const s = ta.selectionStart, en = ta.selectionEnd;
+                ta.value = ta.value.substring(0, s) + '    ' + ta.value.substring(en);
+                ta.selectionStart = ta.selectionEnd = s + 4;
+            }
+        });
+    }
+    function tryInitCodeMirror() {
+        if (typeof CodeMirror === 'undefined' || !CodeMirror || !CodeMirror.fromTextArea) {
+            initEditorFallback();
+            return;
+        }
+        try {
+            codeEditorDom = $('codeEditor');
+            const firstMode = LANG_MODE_MAP[currentLang] || 'python';
+            cmEditor = CodeMirror.fromTextArea(codeEditorDom, {
+                mode: firstMode,
+                lineNumbers: true,
+                indentUnit: 4,
+                tabSize: 4,
+                theme: 'default',
+                matchBrackets: true,
+                autoCloseBrackets: true,
+            });
+        } catch (e) {
+            cmEditor = null;
+            initEditorFallback();
+            showToast('语法高亮加载失败，已回退纯文本编辑器（功能不受影响）', 'warn');
+        }
+    }
+
+    // ============ 初始化 ============
+    function bindJudgeEvents() {
+        $('useSamples').onchange = renderCases;
+        $('addCaseBtn').onclick = () => {
+            customCases.push({ input: '', output: '' });
+            renderCases();
+            setTimeout(() => {
+                const wraps = document.querySelectorAll('.case-item');
+                const last = wraps[wraps.length - 1];
+                if (last) last.querySelector('textarea').focus();
+            }, 50);
+        };
+        $('resetBtn').onclick = () => {
+            const tpl = DEFAULT_TEMPLATES[currentLang] || PROBLEM.template || '';
+            setEditorValue(tpl);
+        };
+        $('submitBtn').onclick = submitJudge;
+    }
+    function bindAuthEvents() {
+        $('authCloseBtn').onclick = closeAuth;
+        $('authModalMask').addEventListener('click', e => { if (e.target.id === 'authModalMask') closeAuth(); });
+        $('authToggle').onclick = () => openAuth(authMode === 'login' ? 'register' : 'login');
+        $('authSubmit').onclick = submitAuth;
+        $('authPassword').addEventListener('keydown', e => { if (e.key === 'Enter') submitAuth(); });
+        $('authUsername').addEventListener('keydown', e => { if (e.key === 'Enter') $('authPassword').focus(); });
+        $('eyePwd').onclick = () => {
+            const i = $('authPassword');
+            i.type = i.type === 'password' ? 'text' : 'password';
+            $('eyePwd').textContent = i.type === 'password' ? '&#128065;' : '&#128064;';
+        };
+        $('eyePwd2').onclick = () => {
+            const i = $('authPassword2');
+            i.type = i.type === 'password' ? 'text' : 'password';
+            $('eyePwd2').textContent = i.type === 'password' ? '&#128065;' : '&#128064;';
+        };
+        $('authPassword').addEventListener('input', () => {
+            if (authMode === 'register') renderStrength($('authPassword').value, $('authPassword2').value);
+        });
+        $('authPassword2').addEventListener('input', () => {
+            renderStrength($('authPassword').value, $('authPassword2').value);
+        });
+        $('authPassword2').addEventListener('keydown', e => { if (e.key === 'Enter') submitAuth(); });
+    }
+
+    function init() {
+        renderTopUser();
+        initEditorFallback();
+        tryInitCodeMirror();
+        initLanguage();
+        applyCustomDebugVisibility();
+        applyCaseVisibilityHint();
+        renderCases();
+        bindJudgeEvents();
+        bindAuthEvents();
+        bindExamEvents();
+        startExamCountdown();
+        ['useSamples', 'useCustomCases', 'onlyCustomCases'].forEach(id => {
+            const el = $(id);
+            if (el) {
+                el.addEventListener('change', () => {
+                    if (id === 'onlyCustomCases' && el.checked) {
+                        const sc = $('useSamples');
+                        if (sc) sc.checked = false;
+                    }
+                    if (id === 'useSamples' && el.checked) {
+                        const oc = $('onlyCustomCases');
+                        if (oc) oc.checked = false;
+                    }
+                    updateScopeHint();
+                });
+            }
+        });
+        const addBtn = $('addCaseBtn');
+        if (addBtn) {
+            addBtn.addEventListener('click', () => setTimeout(updateScopeHint, 50));
+        }
+        setTimeout(updateScopeHint, 200);
+    }
+    document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
