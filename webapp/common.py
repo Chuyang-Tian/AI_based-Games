@@ -52,10 +52,25 @@ MINIMAL_CSS = """
 header[data-testid="stHeader"] {display:none !important;}
 section[data-testid="stSidebar"] {display:none !important;}
 div[data-testid="stTopBar"] {display:none !important;}
+div[data-testid="stAppViewContainer"] {
+  display: block !important;
+}
+div[data-testid="stAppViewContainer"] > div {
+  width: 100% !important;
+  min-width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 !important;
+}
+section[data-testid="stMain"] {
+  width: 100% !important;
+  max-width: 100% !important;
+  margin: 0 auto !important;
+  justify-content: center !important;
+}
 div.block-container,
 div[data-testid="stMainBlockContainer"] {
-  width: min(100%, 96rem);
-  max-width: 96rem;
+  width: 100% !important;
+  max-width: 96rem !important;
   margin-left: auto !important;
   margin-right: auto !important;
   box-sizing: border-box;
