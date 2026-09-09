@@ -32,7 +32,7 @@ if 'home_tags' not in st.session_state:
     st.session_state['home_tags'] = []
 
 # 主体两列（左筛选 / 右题目卡片列表）
-col_left, col_right = st.columns([280, 1000], gap='medium')
+col_left, col_right = st.columns([1, 3], gap='large')
 
 with col_left:
     filter_box = st.container(border=True)

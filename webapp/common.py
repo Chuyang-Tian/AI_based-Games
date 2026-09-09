@@ -52,7 +52,18 @@ MINIMAL_CSS = """
 header[data-testid="stHeader"] {display:none !important;}
 section[data-testid="stSidebar"] {display:none !important;}
 div[data-testid="stTopBar"] {display:none !important;}
-div.block-container {padding-top:0.35rem; padding-bottom:2rem; max-width:96rem;}
+div.block-container,
+div[data-testid="stMainBlockContainer"] {
+  width: min(100%, 96rem);
+  max-width: 96rem;
+  margin-left: auto !important;
+  margin-right: auto !important;
+  box-sizing: border-box;
+  padding-top: 0.75rem;
+  padding-bottom: 2rem;
+  padding-left: 1.25rem;
+  padding-right: 1.25rem;
+}
 div[data-testid="stAppViewContainer"]::before{
   content:""; display:block; height:6px; width:100%;
   background:linear-gradient(135deg,#c62828 0%,#8e0000 100%);
