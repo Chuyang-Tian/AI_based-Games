@@ -1,133 +1,132 @@
 # -*- coding: utf-8 -*-
-"""
-OJ 判题首页（概览页）
-"""
+"""OJ 首页概览。"""
+
 import os
-import random
 import sys
 
 import streamlit as st
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from common import (
-    current_user,
-    ensure_init,
-    load_all_problems,
-    page_url,
-    render_subheader,
-    render_topbar,
-    require_login_error,
-    toast_safe,
-)
+from common import api, current_user, ensure_init, is_admin, page_url, render_page_link, render_subheader, render_topbar
 
-st.set_page_config(page_title='OJ 调试平台 · 判题首页', page_icon='💻', layout='wide', initial_sidebar_state='collapsed')
+st.set_page_config(page_title='判题首页 · OJ', page_icon='🏠', layout='wide', initial_sidebar_state='collapsed')
+
+
+def fetch_list(path):
+    code, data, _ = api('GET', path)
+    if code == 200 and isinstance(data, dict) and isinstance(data.get('data'), list):
+        return data.get('data') or []
+    return []
+
+
+def render_preview_card(title, caption, items, empty_text, route_key, kind):
+    with st.container(border=True):
+        head_left, head_right = st.columns([6, 2])
+        with head_left:
+            st.subheader(title, divider=False)
+            st.caption(caption)
+        with head_right:
+            render_page_link('查看全部', page_url(route_key))
+
+        if not items:
+            st.info(empty_text)
+            return
+
+        for item in items[:3]:
+            if kind == 'class':
+                item_id = item.get('class_id')
+                item_title = item.get('class_name') or '未命名班级'
+                item_desc = f"成员数：{item.get('member_count', 0)}  |  {item.get('description') or '暂无简介'}"
+                detail_url = page_url('classes', id=item_id)
+                detail_label = '进入班级'
+            elif kind == 'assignment':
+                item_id = item.get('assignment_id')
+                item_title = item.get('title') or '未命名作业'
+                item_desc = f"题目数：{item.get('problem_count', 0)}  |  总分：{item.get('total_points', 0)}  |  截止：{item.get('due_at') or '-'}"
+                detail_url = page_url('assignments', id=item_id)
+                detail_label = '进入作业'
+            else:
+                item_id = item.get('exam_id')
+                item_title = item.get('title') or '未命名考试'
+                mode_text = '固定窗口' if int(item.get('mode', 1) or 1) == 1 else f"个人计时 {item.get('duration_minutes', 0)} 分钟"
+                item_desc = f"{mode_text}  |  题目数：{item.get('problem_count', 0)}  |  结束：{item.get('end_at') or '-'}"
+                detail_url = page_url('exams', id=item_id)
+                detail_label = '进入考试'
+
+            row_left, row_right = st.columns([6, 2])
+            with row_left:
+                st.markdown(f'**#{item_id} · {item_title}**')
+                st.caption(item_desc)
+            with row_right:
+                render_page_link(detail_label, detail_url)
+
 
 ensure_init()
-render_topbar('平台概览')
+user = current_user()
+
+render_topbar('首页概览')
 render_subheader([('🏠 判题首页', None)], 'home')
 
-user = current_user()
-if not user:
-    require_login_error()
-    st.caption('© OJ 在线判题平台 · Streamlit 前端 + FastAPI 后端（Python 双栈架构）')
-    st.stop()
-
-problems = load_all_problems()
-easy_count = sum(1 for item in problems if item.get('difficulty') == '简单')
-medium_count = sum(1 for item in problems if item.get('difficulty') == '中等')
-hard_count = sum(1 for item in problems if item.get('difficulty') == '困难')
-all_tags = sorted({tag for item in problems for tag in (item.get('tags') or [])})
-random_problem = random.choice(problems) if problems else None
-recent = problems[:6]
-
-top_stats = st.columns(4)
-top_stats[0].metric('题库总数', len(problems))
-top_stats[1].metric('简单题', easy_count)
-top_stats[2].metric('中等题', medium_count)
-top_stats[3].metric('困难题', hard_count)
-
-hero_left, hero_right = st.columns([2, 1], gap='large')
-
-with hero_left:
-    with st.container(border=True):
-        st.subheader('开始使用', divider=False)
-        st.caption('首页只保留概览与入口，题目浏览、提交记录、判题过程都放在独立页面里。')
-        action_a, action_b, action_c = st.columns(3)
-        with action_a:
-            st.link_button('进入题库浏览', page_url('problems'), type='primary', use_container_width=True)
-        with action_b:
-            st.link_button('查看我的提交', page_url('submissions'), use_container_width=True)
-        with action_c:
-            if random_problem:
-                st.link_button('随机挑一题', page_url('problem_detail', id=random_problem.get('id')), use_container_width=True)
-
-    with st.container(border=True):
-        st.subheader('快速入口', divider=False)
-        quick_a, quick_b, quick_c = st.columns(3)
-        with quick_a:
-            st.markdown('**题库浏览**')
-            st.caption('按题号、标题、难度、标签筛选，并进入独立题目页。')
-            st.link_button('打开题库', page_url('problems'), use_container_width=True)
-        with quick_b:
-            st.markdown('**提交记录**')
-            st.caption('查看个人提交目录，再进入独立提交详情页。')
-            st.link_button('打开提交日志', page_url('submissions'), use_container_width=True)
-        with quick_c:
-            st.markdown('**AI 命题**')
-            st.caption('查看 AI 配置、任务进度和生成结果。')
-            st.link_button('打开 AI 页面', page_url('ai'), use_container_width=True)
-
-with hero_right:
-    with st.container(border=True):
-        st.subheader('题库画像', divider=False)
-        st.caption(f'当前共收录 {len(all_tags)} 个标签。')
-        preview_tags = all_tags[:18]
-        if preview_tags:
-            pill_html = ''.join(f'<span class="oj-pill">{tag}</span>' for tag in preview_tags)
-            st.markdown(pill_html, unsafe_allow_html=True)
-        else:
-            st.caption('暂无标签数据')
-
-    with st.container(border=True):
-        mini_left, mini_right = st.columns([3, 2])
-        with mini_left:
-            st.markdown('**刷新数据**')
-            st.caption('仅在怀疑缓存未更新时使用。')
-        with mini_right:
-            st.caption('')
-            if st.button('刷新题库', use_container_width=True):
-                load_all_problems(force=True)
-                toast_safe('题库缓存已刷新', 'ok')
-                st.rerun()
+classes = fetch_list('/api/classes') if user else []
+assignments = fetch_list('/api/assignments') if user else []
+exams = fetch_list('/api/exams') if user else []
 
 with st.container(border=True):
-    st.subheader('最近题目', divider=False)
-    st.caption('展示少量样例题目，详细浏览请进入题库页。')
-    if not recent:
-        st.info('当前没有题目数据。')
-    else:
-        for item in recent:
-            left, mid, right = st.columns([7, 2, 2])
-            diff_cls = {
-                '简单': 'oj-diff-easy',
-                '中等': 'oj-diff-medium',
-                '困难': 'oj-diff-hard',
-            }.get(item.get('difficulty'), '')
-            tags_html = ''.join(f'<span class="oj-pill">{tag}</span>' for tag in (item.get('tags') or [])[:4])
-            with left:
-                st.markdown(f"**{item.get('id')} · {item.get('title')}**")
-                st.markdown(
-                    f'<span class="oj-pill {diff_cls}">{item.get("difficulty") or "未标注"}</span>'
-                    f'<span class="oj-pill">TL {item.get("time_limit") or "-" }s</span>'
-                    f'<span class="oj-pill">ML {item.get("memory_limit") or "-" }MB</span>',
-                    unsafe_allow_html=True,
-                )
-                if tags_html:
-                    st.markdown(tags_html, unsafe_allow_html=True)
-            with mid:
-                st.link_button('题目详情', page_url('problem_detail', id=item.get('id')), use_container_width=True)
-            with right:
-                st.link_button('进入判题', page_url('judge', id=item.get('id')), type='primary', use_container_width=True)
+    top_left, top_right = st.columns([7, 3])
+    with top_left:
+        st.subheader('欢迎来到 OJ 调试平台', divider=False)
+        if user:
+            role_text = '管理员' if is_admin() else '普通用户'
+            st.caption(f'已恢复班级、作业、考试三类创新功能入口。当前登录：{user.get("username", "")}（{role_text}）')
+        else:
+            st.caption('首页保留平台概览与核心入口；登录后即可查看班级、作业和考试信息。')
+    with top_right:
+        render_page_link('进入题库浏览', page_url('problems'), primary=True)
+        render_page_link('查看提交记录', page_url('submissions'))
 
-st.caption('© OJ 在线判题平台 · Streamlit 前端 + FastAPI 后端（Python 双栈架构）')
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric('班级', len(classes))
+    m2.metric('作业', len(assignments))
+    m3.metric('考试', len(exams))
+    m4.metric('身份', '管理员' if is_admin() else ('已登录' if user else '未登录'))
+
+    q1, q2, q3 = st.columns(3)
+    with q1:
+        render_page_link('进入班级功能', page_url('classes'))
+    with q2:
+        render_page_link('进入作业功能', page_url('assignments'))
+    with q3:
+        render_page_link('进入考试功能', page_url('exams'))
+
+col1, col2, col3 = st.columns(3, gap='large')
+with col1:
+    render_preview_card(
+        '班级概览',
+        '展示可见班级；没有数据时会明确提示暂无。',
+        classes,
+        '暂无班级数据',
+        'classes',
+        'class',
+    )
+with col2:
+    render_preview_card(
+        '作业概览',
+        '恢复原来的作业创新功能入口，并保留作业上下文做题。',
+        assignments,
+        '暂无作业数据',
+        'assignments',
+        'assignment',
+    )
+with col3:
+    render_preview_card(
+        '考试概览',
+        '恢复考试功能入口，可继续从考试上下文进入判题页。',
+        exams,
+        '暂无考试数据',
+        'exams',
+        'exam',
+    )
+
+if not user:
+    st.info('请先点击右上角“登录 / 注册”，登录后即可查看班级、作业、考试以及个人提交信息。')

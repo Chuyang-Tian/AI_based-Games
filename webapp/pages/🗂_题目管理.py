@@ -19,6 +19,7 @@ from common import (
     is_admin,
     load_all_problems,
     page_url,
+    render_page_link,
     render_subheader,
     render_topbar,
     require_login_error,
@@ -141,9 +142,9 @@ with st.container(border=True):
                     if summary:
                         st.caption(summary[:72] + ('...' if len(summary) > 72 else ''))
                 with mid:
-                    st.link_button('题目详情', page_url('problem_detail', id=item.get('id')), use_container_width=True)
+                    render_page_link('题目详情', page_url('problem_detail', id=item.get('id')))
                 with right:
-                    st.link_button('进入判题', page_url('judge', id=item.get('id')), type='primary', use_container_width=True)
+                    render_page_link('进入判题', page_url('judge', id=item.get('id')), primary=True)
 
 pager_left, pager_mid, pager_right = st.columns([1, 2, 1])
 with pager_left:

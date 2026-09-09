@@ -16,6 +16,9 @@ SESSION = requests.Session()
 ROUTE = {
     'home': 'app_streamlit.py',
     'judge': 'pages/⚖️_判题器.py',
+    'classes': 'pages/🎓_班级.py',
+    'assignments': 'pages/📝_作业.py',
+    'exams': 'pages/📝_考试.py',
     'problems': 'pages/🗂_题目管理.py',
     'problem_detail': 'pages/📄_题目详情.py',
     'submissions': 'pages/📋_提交日志.py',
@@ -24,9 +27,12 @@ ROUTE = {
     'ai': 'pages/🤖_AI命题.py',
     'ai_config': 'pages/⚙️_AI配置.py',
 }
-ROUTE_ORDER = ['home', 'problems', 'submissions', 'users', 'ai', 'ai_config']
+ROUTE_ORDER = ['home', 'classes', 'assignments', 'exams', 'problems', 'submissions', 'users', 'ai', 'ai_config']
 ROUTE_LABELS = {
     'home': '🏠 判题首页',
+    'classes': '🎓 班级',
+    'assignments': '📝 作业',
+    'exams': '📝 考试',
     'judge': '⚖️ 判题器',
     'problems': '🗂 题目管理',
     'submissions': '📋 提交日志',
@@ -36,6 +42,9 @@ ROUTE_LABELS = {
 }
 ROUTE_LABELS_USER = {
     'home': '🏠 判题首页',
+    'classes': '🎓 我的班级',
+    'assignments': '📝 我的作业',
+    'exams': '📝 我的考试',
     'judge': '⚖️ 判题器',
     'problems': '📚 题库浏览',
     'submissions': '📋 我的提交',
@@ -43,6 +52,9 @@ ROUTE_LABELS_USER = {
 }
 ROUTE_TO_SLUG = {
     'home': '',
+    'classes': '班级',
+    'assignments': '作业',
+    'exams': '考试',
     'judge': '判题器',
     'problems': '题目管理',
     'problem_detail': '题目详情',
@@ -55,24 +67,75 @@ ROUTE_TO_SLUG = {
 
 MINIMAL_CSS = """
 <style>
+ html, body, #root, [data-testid="stApp"] {
+  height: auto !important;
+  min-height: 100vh !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+  scroll-behavior: smooth;
+}
+div[data-testid="stApp"],
+.stApp {
+  position: static !important;
+  inset: auto !important;
+  top: auto !important;
+  right: auto !important;
+  bottom: auto !important;
+  left: auto !important;
+  width: 100% !important;
+  min-height: 100vh !important;
+  height: auto !important;
+  overflow-x: hidden !important;
+  overflow-y: auto !important;
+}
 header[data-testid="stHeader"] {display:none !important;}
 section[data-testid="stSidebar"] {display:none !important;}
 div[data-testid="stTopBar"] {display:none !important;}
+div[data-testid="stToolbar"] {display:none !important;}
+div[data-testid="stDecoration"] {display:none !important;}
 div[data-testid="stAppViewContainer"] {
   display: block !important;
+  position: static !important;
+  inset: auto !important;
+  min-height: 100vh !important;
+  height: auto !important;
+  overflow-x: hidden !important;
+  overflow-y: visible !important;
 }
-div[data-testid="stAppViewContainer"] > div {
+div[data-testid="stAppViewContainer"] > div,
+div[data-testid="stAppViewContainer"] > section,
+div[data-testid="stAppViewContainer"] > main {
   width: 100% !important;
   min-width: 100% !important;
   max-width: 100% !important;
   margin: 0 !important;
+  position: static !important;
+  inset: auto !important;
+  min-height: 100vh !important;
+  height: auto !important;
+  overflow: visible !important;
 }
-section[data-testid="stMain"] {
+main,
+section[data-testid="stMain"],
+div[data-testid="stMain"] {
   width: 100% !important;
   max-width: 100% !important;
   margin: 0 auto !important;
   justify-content: center !important;
-  padding-top: 0.25rem !important;
+  position: static !important;
+  inset: auto !important;
+  min-height: 100vh !important;
+  height: auto !important;
+  padding-top: 0 !important;
+  overflow: visible !important;
+}
+main > div,
+section[data-testid="stMain"] > div,
+div[data-testid="stMain"] > div {
+  position: static !important;
+  inset: auto !important;
+  min-height: 100vh !important;
+  height: auto !important;
   overflow: visible !important;
 }
 div.block-container,
@@ -82,16 +145,32 @@ div[data-testid="stMainBlockContainer"] {
   margin-left: auto !important;
   margin-right: auto !important;
   box-sizing: border-box;
-  padding-top: 1.75rem;
+  min-height: auto !important;
+  height: auto !important;
+  padding-top: 2.4rem !important;
   padding-bottom: 2rem;
   padding-left: 1.25rem;
   padding-right: 1.25rem;
+  overflow: visible !important;
+}
+div[data-testid="stMainBlockContainer"] > div,
+div.block-container > div {
   overflow: visible !important;
 }
 div[data-testid="stAppViewContainer"]::before{
   content:""; display:block; height:6px; width:100%;
   background:linear-gradient(135deg,#c62828 0%,#8e0000 100%);
   border-radius:0 0 8px 8px;
+}
+.oj-nav-wrap,
+[data-testid="stVerticalBlock"] > div:first-child {
+  scroll-margin-top: 1.25rem;
+}
+div[data-testid="stVerticalBlock"] {
+  gap: 0.85rem !important;
+}
+.stElementContainer {
+  overflow: visible !important;
 }
 .oj-pill {
   display: inline-block;
@@ -145,6 +224,34 @@ div[data-testid="stAppViewContainer"]::before{
   word-break: break-word;
   font-size: 0.95rem;
   color: #111827;
+}
+.oj-link-btn {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 0.75rem;
+  border: 1px solid #d1d5db;
+  background: #ffffff;
+  color: #111827 !important;
+  text-align: center;
+  text-decoration: none !important;
+  font-weight: 600;
+  line-height: 1.35;
+  padding: 0.72rem 0.95rem;
+  transition: all 0.15s ease;
+}
+.oj-link-btn:hover {
+  border-color: #9ca3af;
+  background: #f9fafb;
+}
+.oj-link-btn-primary {
+  background: linear-gradient(135deg, #c62828 0%, #8e0000 100%);
+  border-color: #8e0000;
+  color: #ffffff !important;
+}
+.oj-link-btn-primary:hover {
+  background: linear-gradient(135deg, #b71c1c 0%, #7f0000 100%);
+  border-color: #7f0000;
 }
 </style>
 """
@@ -319,11 +426,10 @@ def render_subheader(breadcrumb_parts, active_route='home'):
             slug = ROUTE_TO_SLUG.get(route_key, '')
             target = '/' if not slug else f'/{url_quote(slug)}'
             with nav_cols[index]:
-                st.link_button(
+                render_page_link(
                     label_map[route_key],
                     target,
-                    use_container_width=True,
-                    type='primary' if route_key == active_route else 'secondary',
+                    primary=route_key == active_route,
                 )
         crumbs = []
         for index, (text, _) in enumerate(breadcrumb_parts or []):
@@ -334,7 +440,17 @@ def render_subheader(breadcrumb_parts, active_route='home'):
 
 
 def render_home_button(label='返回首页'):
-    st.link_button(label, page_url('home'), use_container_width=True)
+    render_page_link(label, page_url('home'))
+
+
+def render_page_link(label, url, primary=False):
+    btn_class = 'oj-link-btn oj-link-btn-primary' if primary else 'oj-link-btn'
+    safe_label = html.escape(str(label))
+    safe_url = html.escape(str(url), quote=True)
+    st.markdown(
+        f'<a class="{btn_class}" href="{safe_url}" target="_self">{safe_label}</a>',
+        unsafe_allow_html=True,
+    )
 
 
 def render_sample_cases(samples, heading='公开样例'):

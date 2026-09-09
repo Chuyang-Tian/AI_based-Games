@@ -12,7 +12,7 @@ st.set_page_config(page_title='判题器 · OJ', page_icon='⚖️', layout='wid
 from common import (
     ensure_init, render_topbar, render_subheader,
     current_user, require_login_error, is_admin,
-    load_all_problems, load_languages, api, page_url, render_home_button, render_sample_cases, toast_safe,
+    load_all_problems, load_languages, api, page_url, render_home_button, render_page_link, render_sample_cases, toast_safe,
 )
 
 LANG_DEFAULT_CODE = {
@@ -31,6 +31,10 @@ if isinstance(raw_pid, (list, tuple)):
     pid = str(raw_pid[0]) if raw_pid else ''
 else:
     pid = str(raw_pid)
+raw_assignment_id = st.query_params.get('assignment_id') or ''
+assignment_id = str(raw_assignment_id[0]) if isinstance(raw_assignment_id, (list, tuple)) and raw_assignment_id else str(raw_assignment_id or '')
+raw_exam_id = st.query_params.get('exam_id') or ''
+exam_id = str(raw_exam_id[0]) if isinstance(raw_exam_id, (list, tuple)) and raw_exam_id else str(raw_exam_id or '')
 if not pid:
     st.info('⚠️ 没有指定题目 ID（URL 需包含 ?id=xxx）。')
     render_home_button('← 返回首页')
@@ -45,11 +49,15 @@ if not problem:
 
 bc = [('🏠 判题首页', 'home'),
       ('🗂 题目管理' if is_admin() else '📚 题库', 'problems')]
+if assignment_id:
+    bc.insert(1, ('📝 作业', 'assignments'))
+if exam_id:
+    bc.insert(1, ('📝 考试', 'exams'))
 if problem:
     bc.append((f'📝 {problem.get("id")} · {problem.get("title")}', None))
-    render_subheader(bc, 'problems')
+    render_subheader(bc, 'judge')
 else:
-    render_subheader(bc + [('题目不存在', None)], 'problems')
+    render_subheader(bc + [('题目不存在', None)], 'judge')
 
 if not user:
     require_login_error()
@@ -116,6 +124,10 @@ with header_card:
         tagstr = f'难度: {p_diff or "-"}  |  作者: {p_author}  |  来源: {p_source}'
         if p_tags:
             tagstr += f'  |  标签: {", ".join(p_tags)}'
+        if assignment_id:
+            tagstr += f'  |  作业 #{assignment_id}'
+        if exam_id:
+            tagstr += f'  |  考试 #{exam_id}'
         st.caption(tagstr)
     with t2:
         st.caption('')
@@ -303,6 +315,10 @@ with col_right:
                     'memory_limit': int(ml_val),
                     'compare_mode': gs('cm') or 'exact',
                 }
+                if assignment_id:
+                    payload['assignment_id'] = int(assignment_id)
+                if exam_id:
+                    payload['exam_id'] = int(exam_id)
                 if use_s and samples:
                     payload['samples_override'] = [
                         {'input': s.get('input',''), 'expected': s.get('output','')}
@@ -404,8 +420,8 @@ with col_right:
             st.caption('详细编译日志、测试点信息和权限校验后的可见内容，已移到独立提交详情页。')
             d_left, d_right = st.columns(2)
             with d_left:
-                st.link_button('查看本次提交详情', page_url('submission_detail', id=sid), type='primary', use_container_width=True)
+                render_page_link('查看本次提交详情', page_url('submission_detail', id=sid), primary=True)
             with d_right:
-                st.link_button('查看该题题面', page_url('problem_detail', id=p_id), use_container_width=True)
+                render_page_link('查看该题题面', page_url('problem_detail', id=p_id))
 
 st.caption('© OJ 在线判题平台 · Streamlit 前端 + FastAPI 后端（Python 双栈架构）')

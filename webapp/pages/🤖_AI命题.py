@@ -15,6 +15,7 @@ from common import (
     current_user,
     ensure_init,
     is_admin,
+    render_page_link,
     render_subheader,
     render_topbar,
     require_login_error,
@@ -188,5 +189,5 @@ with st.container(border=True):
                 st.error(f'保存失败：{save_data.get("msg") if save_data else save_err}')
         with judge_col:
             saved_problem_id = st.session_state.get('ai_saved_problem_id') or save_payload['id']
-            st.link_button('打开题目管理页', '/%E9%A2%98%E7%9B%AE%E7%AE%A1%E7%90%86', use_container_width=True)
+            render_page_link('打开题目管理页', '/%E9%A2%98%E7%9B%AE%E7%AE%A1%E7%90%86')
             st.caption(f'目标题目 ID：`{saved_problem_id}`')

@@ -16,6 +16,7 @@ from common import (
     ensure_init,
     is_admin,
     page_url,
+    render_page_link,
     render_home_button,
     render_sample_cases,
     render_subheader,
@@ -64,7 +65,7 @@ else:
         with top_mid:
             render_home_button()
         with top_right:
-            st.link_button('进入判题页', page_url('judge', id=problem.get('id')), type='primary', use_container_width=True)
+            render_page_link('进入判题页', page_url('judge', id=problem.get('id')), primary=True)
 
         m1, m2, m3 = st.columns(3)
         m1.metric('时间限制', f"{problem.get('time_limit') or '-'} s")

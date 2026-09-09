@@ -16,6 +16,7 @@ from common import (
     is_admin,
     load_all_problems,
     page_url,
+    render_page_link,
     render_subheader,
     render_topbar,
     require_login_error,
@@ -112,9 +113,9 @@ with st.container(border=True):
                     st.markdown(f"**提交 #{row['提交 ID']} · {row['题目 ID']} · {row['题目标题']}**")
                     st.caption(f"状态: {row['状态']}  |  得分: {row['得分']} / {row['总分']}")
                 with mid:
-                    st.link_button('查看题目', page_url('problem_detail', id=row['题目 ID']), use_container_width=True)
+                    render_page_link('查看题目', page_url('problem_detail', id=row['题目 ID']))
                 with right:
-                    st.link_button('提交详情', page_url('submission_detail', id=row['提交 ID']), type='primary', use_container_width=True)
+                    render_page_link('提交详情', page_url('submission_detail', id=row['提交 ID']), primary=True)
     elif code == 200:
         st.info('当前条件下没有提交记录。')
     else:
