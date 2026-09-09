@@ -24,14 +24,14 @@ from common import (
 st.set_page_config(page_title='登录 / 注册 · OJ', page_icon='🔐', layout='wide', initial_sidebar_state='collapsed')
 
 ensure_init()
-render_topbar('账号入口')
+render_topbar('账号入口', on_auth_page=True)
 render_subheader([('🏠 判题首页', 'home'), ('🔐 登录 / 注册', None)], 'home')
 
 user = current_user()
 
 with st.container(border=True):
     if user:
-        st.subheader('你已经登录', divider=False)
+        st.subheader('你已经登录')
         st.caption(f"当前账号：{user.get('username', '')}（{user.get('role', '') or 'user'}）")
         left, right = st.columns(2)
         with left:
@@ -44,7 +44,7 @@ with st.container(border=True):
                 toast_safe('已退出登录', 'ok')
                 st.rerun()
     else:
-        st.subheader('登录 / 注册', divider=False)
+        st.subheader('登录 / 注册')
         st.caption('默认管理员：`admin / admintestpassword`')
         mode = st.radio('模式', ['登录', '注册'], horizontal=True, label_visibility='collapsed')
         with st.form('auth_page_form'):

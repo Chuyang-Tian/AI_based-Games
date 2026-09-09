@@ -465,13 +465,20 @@ class UserDatabase:
 
     def list_users(
         self,
-        page: int = 1,
-        page_size: int = 20,
+        page=None,
+        page_size=None,
         keyword: Optional[str] = None,
     ) -> Tuple[int, List[User]]:
-        page = max(1, int(page))
-        page_size = max(1, min(200, int(page_size)))
-        offset = (page - 1) * page_size
+        if page is not None and page_size is None:
+            raise ValueError('400 page 非空需同时提供 page_size')
+        limit_sql = ''
+        if page is not None and page_size is not None:
+            p = max(1, int(page))
+            ps = max(1, min(500, int(page_size)))
+            limit_sql = f'LIMIT {ps} OFFSET {(p - 1) * ps}'
+        elif page_size is not None and page is None:
+            ps = max(1, min(500, int(page_size)))
+            limit_sql = f'LIMIT {ps} OFFSET 0'
         with self._connect() as conn:
             base_sql = 'FROM users'
             params: list = []
@@ -481,8 +488,8 @@ class UserDatabase:
             cur = conn.execute(f'SELECT COUNT(*) AS c {base_sql}', params)
             total = cur.fetchone()['c']
             cur = conn.execute(
-                f'SELECT * {base_sql} ORDER BY user_id ASC LIMIT ? OFFSET ?',
-                params + [page_size, offset],
+                f'SELECT * {base_sql} ORDER BY user_id ASC {limit_sql}',
+                params,
             )
             rows = cur.fetchall()
             users = [self._row_to_user(r) for r in rows]
@@ -502,6 +509,26 @@ class UserDatabase:
                     (user_id,),
                 )
             conn.commit()
+
+    def recompute_user_stats(self, user_id: int) -> Tuple[int, int]:
+        uid = int(user_id)
+        with self._connect() as conn:
+            cur = conn.execute(
+                'SELECT COUNT(*) FROM submissions WHERE user_id = ?', (uid,)
+            )
+            submit_count = int(cur.fetchone()[0])
+            cur = conn.execute(
+                '''SELECT COUNT(DISTINCT problem_id) FROM submissions
+                   WHERE user_id = ? AND status = 'AC' AND pass_cases = total_cases AND total_cases > 0''',
+                (uid,),
+            )
+            resolve_count = int(cur.fetchone()[0])
+            conn.execute(
+                'UPDATE users SET submit_count = ?, resolve_count = ? WHERE user_id = ?',
+                (submit_count, resolve_count, uid),
+            )
+            conn.commit()
+        return submit_count, resolve_count
 
     # ============== Session 相关 ==============
     def create_session(self, user_id: int, ttl_seconds: int = 7 * 24 * 3600) -> str:
@@ -1129,19 +1156,40 @@ class UserDatabase:
         return self.get_problem(problem_id)
 
     def delete_problem(self, problem_id: str) -> bool:
+        pid = str(problem_id).strip()
         with self._connect() as conn:
-            cur_subs = conn.execute('SELECT submission_id FROM submissions WHERE problem_id = ?', (problem_id,))
+            cur_subs = conn.execute('SELECT submission_id FROM submissions WHERE problem_id = ?', (pid,))
             sub_ids = [r[0] for r in cur_subs.fetchall()]
-            if sub_ids:
+            cur_tbls = conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            existing_tables = {r[0] for r in cur_tbls.fetchall()}
+            if sub_ids and 'audit_logs' in existing_tables:
                 placeholders = ','.join('?' * len(sub_ids))
                 conn.execute(f'DELETE FROM audit_logs WHERE target_type = ? AND target_id IN ({placeholders})',
                              ['submission'] + [str(sid) for sid in sub_ids])
-            conn.execute(
-                'DELETE FROM audit_logs WHERE target_type = ? AND detail LIKE ?',
-                ('submission', f'%"problem_id": "{problem_id}"%'),
-            )
-            conn.execute('DELETE FROM submissions WHERE problem_id = ?', (problem_id,))
-            cur = conn.execute('DELETE FROM problems WHERE id = ?', (problem_id,))
+            if 'audit_logs' in existing_tables:
+                conn.execute(
+                    'DELETE FROM audit_logs WHERE target_type = ? AND detail LIKE ?',
+                    ('submission', f'%"problem_id": "{pid}"%'),
+                )
+                conn.execute(
+                    'DELETE FROM audit_logs WHERE target_type = ? AND target_id = ?',
+                    ('problem', pid),
+                )
+            if sub_ids:
+                placeholders = ','.join('?' * len(sub_ids))
+                placeholders_args = [int(s) for s in sub_ids]
+                if 'judge_logs' in existing_tables:
+                    conn.execute(
+                        f'DELETE FROM judge_logs WHERE submission_id IN ({placeholders})',
+                        placeholders_args,
+                    )
+                if 'access_logs' in existing_tables:
+                    conn.execute(
+                        f'DELETE FROM access_logs WHERE submission_id IN ({placeholders})',
+                        placeholders_args,
+                    )
+            conn.execute('DELETE FROM submissions WHERE problem_id = ?', (pid,))
+            cur = conn.execute('DELETE FROM problems WHERE id = ?', (pid,))
             conn.commit()
             return cur.rowcount > 0
 

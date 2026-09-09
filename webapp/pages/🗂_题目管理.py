@@ -71,7 +71,7 @@ problems = load_all_problems(force=st.session_state.pop('problems_force_refresh'
 all_tags = sorted({tag for item in problems for tag in (item.get('tags') or [])})
 
 with st.container(border=True):
-    st.subheader('题库筛选', divider=False)
+    st.subheader('题库筛选')
     st.caption('这里是独立目录页，只负责浏览、检索和跳转。')
     c1, c2, c3, c4 = st.columns([4, 2, 4, 2])
     with c1:
@@ -140,7 +140,7 @@ stats[3].metric('当前页码', f"{filters['page']} / {total_pages}")
 stats[4].metric('当前展示', f'{visible_count} / {len(filtered)}')
 
 with st.container(border=True):
-    st.subheader('题目目录', divider=False)
+    st.subheader('题目目录')
     if len(filtered) > visible_count:
         st.caption(f'当前仅展示第 {start + 1} - {min(end, len(filtered))} 题，共 {len(filtered)} 题；可在上方把“每页数量”改为“全部”，或翻到下一页继续看。')
     else:

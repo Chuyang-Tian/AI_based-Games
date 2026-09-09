@@ -1,52 +1,20 @@
-# -*- coding: utf-8 -*-
 """AI 智能命题页。"""
-
 import os
 import sys
 import time
-
 import streamlit as st
-
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from common import (
-    api,
-    clear_problem_cache,
-    current_user,
-    ensure_init,
-    is_admin,
-    render_rich_text,
-    render_page_link,
-    render_subheader,
-    render_topbar,
-    require_login_error,
-    toast_safe,
-)
-
+from common import api, clear_problem_cache, current_user, ensure_init, is_admin, render_rich_text, render_page_link, render_subheader, render_topbar, require_login_error, toast_safe
 st.set_page_config(page_title='AI 命题 · OJ', page_icon='🤖', layout='wide', initial_sidebar_state='collapsed')
-
 ensure_init()
 render_topbar('AI 智能命题')
 render_subheader([('🏠 判题首页', 'home'), ('🤖 AI 命题', None)], 'ai')
-
 user = current_user()
 if not user:
     require_login_error()
     st.stop()
-
-STYLE_OPTIONS = {
-    'plain': '裸题（直接给题）',
-    'story': '故事（常规背景）',
-    'fun': '趣味（轻松元素）',
-    'future': '科技（前沿包装）',
-}
-
-SAMPLE_DISTRIBUTION_OPTIONS = {
-    'balanced': '均衡（基础/边界/卡常各都有）',
-    'strict-optimal': '最优优先（更强调严格最优解）',
-    'edge-heavy': '边界优先（更强调极限与特殊情况）',
-}
-
+STYLE_OPTIONS = {'plain': '裸题（直接给题）', 'story': '故事（常规背景）', 'fun': '趣味（轻松元素）', 'future': '科技（前沿包装）'}
+SAMPLE_DISTRIBUTION_OPTIONS = {'balanced': '均衡（基础/边界/卡常各都有）', 'strict-optimal': '最优优先（更强调严格最优解）', 'edge-heavy': '边界优先（更强调极限与特殊情况）'}
 
 def normalize_problem_payload(problem_json):
     difficulty_value = problem_json.get('difficulty', 5)
@@ -60,38 +28,18 @@ def normalize_problem_payload(problem_json):
     else:
         difficulty_text = str(difficulty_value or '中等')
     test_cases = problem_json.get('test_cases') or []
-    samples = [
-        {'input': item.get('input', ''), 'output': item.get('output', '')}
-        for item in test_cases if item.get('visibility') == 'public'
-    ]
+    samples = [{'input': item.get('input', ''), 'output': item.get('output', '')} for item in test_cases if item.get('visibility') == 'public']
     if not samples and test_cases:
         samples = [{'input': test_cases[0].get('input', ''), 'output': test_cases[0].get('output', '')}]
-    payload = {
-        'id': problem_json.get('problem_id_hint') or f"ai_{int(time.time())}",
-        'title': problem_json.get('title') or 'AI 生成题目',
-        'description': problem_json.get('description') or '',
-        'input_description': '详见题面中的输入格式部分。',
-        'output_description': '详见题面中的输出格式部分。',
-        'constraints': '详见题面中的数据范围部分。',
-        'samples': samples,
-        'testcases': [{'input': item.get('input', ''), 'output': item.get('output', '')} for item in test_cases],
-        'hint': '',
-        'source': 'AI 智能命题',
-        'tags': problem_json.get('tags') or [],
-        'time_limit': float(problem_json.get('time_limit') or 1.0),
-        'memory_limit': int(problem_json.get('memory_limit') or 128),
-        'author': user.get('username') or 'AI',
-        'difficulty': difficulty_text,
-    }
+    payload = {'id': problem_json.get('problem_id_hint') or f'ai_{int(time.time())}', 'title': problem_json.get('title') or 'AI 生成题目', 'description': problem_json.get('description') or '', 'input_description': '详见题面中的输入格式部分。', 'output_description': '详见题面中的输出格式部分。', 'constraints': '详见题面中的数据范围部分。', 'samples': samples, 'testcases': [{'input': item.get('input', ''), 'output': item.get('output', '')} for item in test_cases], 'hint': '', 'source': 'AI 智能命题', 'tags': problem_json.get('tags') or [], 'time_limit': float(problem_json.get('time_limit') or 1.0), 'memory_limit': int(problem_json.get('memory_limit') or 128), 'author': user.get('username') or 'AI', 'difficulty': difficulty_text}
     return payload
-
 
 def render_problem_preview(problem_json):
     tags = problem_json.get('tags') or []
     with st.container(border=True):
-        st.subheader(problem_json.get('title') or 'AI 生成题目', divider=False)
+        st.subheader(problem_json.get('title') or 'AI 生成题目')
         if tags:
-            st.caption(' / '.join(str(tag) for tag in tags))
+            st.caption(' / '.join((str(tag) for tag in tags)))
         if problem_json.get('description'):
             render_rich_text(problem_json.get('description'))
         cases = problem_json.get('test_cases') or []
@@ -101,24 +49,20 @@ def render_problem_preview(problem_json):
         c1.metric('公开样例', len(public_cases))
         c2.metric('隐藏样例', len(hidden_cases))
         c3.metric('总用例', len(cases))
-
-
 status_code, status_data, status_err = api('GET', '/api/ai/status')
 ai_status = status_data.get('data') if isinstance(status_data, dict) and isinstance(status_data.get('data'), dict) else {}
 allow_user_ai = bool(ai_status.get('allow_user_problem_create'))
 ai_configured = bool(ai_status.get('configured'))
 ai_mock_mode = bool(ai_status.get('mock_mode'))
-
 if status_code != 200:
     st.warning('暂时无法读取 AI 配置状态，请稍后刷新页面重试。')
-elif not is_admin() and not allow_user_ai:
+elif not is_admin() and (not allow_user_ai):
     st.info('当前管理员尚未开放普通用户使用 AI 命题功能。你可以先浏览其它页面，或联系管理员开启。')
     st.stop()
-elif not ai_configured and not ai_mock_mode:
+elif not ai_configured and (not ai_mock_mode):
     st.warning('当前尚未配置 AI 密钥。请联系管理员在“AI 配置”页面填写 DeepSeek 参数与密钥，或先启用 Mock 模式。')
-
 with st.container(border=True):
-    st.subheader('创建命题任务', divider=False)
+    st.subheader('创建命题任务')
     st.caption('题面风格已改为中文说明；括号里是简短解释，方便快速理解效果。')
     with st.form('ai_task_form'):
         c1, c2 = st.columns(2)
@@ -127,34 +71,14 @@ with st.container(border=True):
             difficulty = st.slider('难度（1-10）', min_value=1, max_value=10, value=5)
             sample_count = st.number_input('样例数量', min_value=4, max_value=20, value=10)
         with c2:
-            style_label = st.selectbox(
-                '题面风格',
-                options=list(STYLE_OPTIONS.keys()),
-                index=0,
-                format_func=lambda key: STYLE_OPTIONS[key],
-            )
-            sample_distribution = st.selectbox(
-                '样例分布',
-                options=list(SAMPLE_DISTRIBUTION_OPTIONS.keys()),
-                index=0,
-                format_func=lambda key: SAMPLE_DISTRIBUTION_OPTIONS[key],
-            )
+            style_label = st.selectbox('题面风格', options=list(STYLE_OPTIONS.keys()), index=0, format_func=lambda key: STYLE_OPTIONS[key])
+            sample_distribution = st.selectbox('样例分布', options=list(SAMPLE_DISTRIBUTION_OPTIONS.keys()), index=0, format_func=lambda key: SAMPLE_DISTRIBUTION_OPTIONS[key])
             extra_tags = st.text_input('附加标签', placeholder='数组, 排序, 贪心')
         requirement = st.text_area('补充要求', height=90, placeholder='描述边界样例、输入规模、判题口味等')
         narrative = st.text_area('叙事 / 包装细节', height=90, placeholder='例如：校园、太空、机器人、未来科技、轻松趣味梗，但不要重复上面已经填过的内容')
         submit = st.form_submit_button('发起 AI 命题任务', type='primary', use_container_width=True)
     if submit:
-        payload = {
-            'topic': topic.strip() or requirement.strip() or '基础算法',
-            'difficulty': int(difficulty),
-            'style': style_label,
-            'sample_count': int(sample_count),
-            'sample_distribution': sample_distribution,
-            'extra_tags': [item.strip() for item in extra_tags.split(',') if item.strip()],
-            'source': 'AI 智能命题',
-            'style_custom': narrative.strip(),
-            'requirement_notes': requirement.strip(),
-        }
+        payload = {'topic': topic.strip() or requirement.strip() or '基础算法', 'difficulty': int(difficulty), 'style': style_label, 'sample_count': int(sample_count), 'sample_distribution': sample_distribution, 'extra_tags': [item.strip() for item in extra_tags.split(',') if item.strip()], 'source': 'AI 智能命题', 'style_custom': narrative.strip(), 'requirement_notes': requirement.strip()}
         task_code, task_data, task_err = api('POST', '/api/ai/problem-tasks/', payload, timeout=120)
         if task_code == 200 and isinstance(task_data, dict) and task_data.get('data'):
             st.session_state['ai_active_task_id'] = task_data['data'].get('task_id')
@@ -164,8 +88,7 @@ with st.container(border=True):
         if task_code == 403:
             st.error('当前账号没有 AI 命题权限，请联系管理员开启“允许普通用户使用 AI 命题”。')
         else:
-            st.error(f'任务创建失败：{task_data.get("msg") if task_data else task_err}')
-
+            st.error(f"任务创建失败：{(task_data.get('msg') if task_data else task_err)}")
 
 def render_task_status():
     task_id = st.session_state.get('ai_active_task_id')
@@ -173,13 +96,13 @@ def render_task_status():
         st.info('当前没有进行中的 AI 任务。')
         return
     status_code, status_data, status_err = api('GET', f'/api/ai/problem-tasks/{task_id}')
-    if status_code != 200 or not isinstance(status_data, dict) or not status_data.get('data'):
+    if status_code != 200 or not isinstance(status_data, dict) or (not status_data.get('data')):
         if status_code == 403:
             st.error('当前账号无权查看这个 AI 任务。')
         elif status_code == 404:
             st.warning('这个 AI 任务已经不存在，可能已被清理。')
         else:
-            st.error(f'读取任务状态失败：{status_data.get("msg") if status_data else status_err}')
+            st.error(f"读取任务状态失败：{(status_data.get('msg') if status_data else status_err)}")
         return
     task = status_data['data']
     last_payload = task.get('last_payload') or {}
@@ -189,16 +112,7 @@ def render_task_status():
     cols[1].metric('当前状态', status)
     cols[2].metric('最后事件', task.get('last_event') or '-')
     cols[3].metric('完成时间', task.get('finished_at') or '-')
-    event_text = {
-        'start': '任务已创建，正在准备参数',
-        'step': '正在执行当前阶段',
-        'draft': '已经拿到题目草稿',
-        'cases': '正在生成并校验样例',
-        'token': '模型已返回一部分内容',
-        'retried': '正在自动重试',
-        'complete': '生成完成',
-        'error': '生成失败',
-    }.get(task.get('last_event') or '', '等待中')
+    event_text = {'start': '任务已创建，正在准备参数', 'step': '正在执行当前阶段', 'draft': '已经拿到题目草稿', 'cases': '正在生成并校验样例', 'token': '模型已返回一部分内容', 'retried': '正在自动重试', 'complete': '生成完成', 'error': '生成失败'}.get(task.get('last_event') or '', '等待中')
     st.info(f'当前进度：{event_text}')
     if task.get('last_event') == 'step':
         step_index = int(last_payload.get('index', 0) or 0)
@@ -225,11 +139,10 @@ def render_task_status():
             st.rerun()
     elif status in ('error', 'cancelled'):
         st.session_state.pop('ai_active_task_id', None)
-
-
 with st.container(border=True):
-    st.subheader('任务进度', divider=False)
+    st.subheader('任务进度')
     if hasattr(st, 'fragment'):
+
         @st.fragment(run_every='2s')
         def task_fragment():
             render_task_status()
@@ -246,8 +159,7 @@ with st.container(border=True):
                 toast_safe('任务已取消', 'warn')
                 st.session_state.pop('ai_active_task_id', None)
                 st.rerun()
-            st.error(f'取消失败：{cancel_data.get("msg") if cancel_data else cancel_err}')
-
+            st.error(f"取消失败：{(cancel_data.get('msg') if cancel_data else cancel_err)}")
 result = st.session_state.get('ai_latest_result')
 active_task_id = st.session_state.get('ai_active_task_id')
 if not result and active_task_id:
@@ -258,7 +170,7 @@ if not result and active_task_id:
         st.session_state['ai_latest_result'] = result
         st.session_state.pop('ai_active_task_id', None)
 with st.container(border=True):
-    st.subheader('生成结果', divider=False)
+    st.subheader('生成结果')
     if not result:
         st.info('任务完成后会在这里展示题目 JSON，并可一键写入题库。')
     else:
@@ -282,7 +194,7 @@ with st.container(border=True):
                 elif save_code == 403:
                     st.error('当前账号没有保存到题库的权限。')
                 else:
-                    st.error(f'保存失败：{save_data.get("msg") if save_data else save_err}')
+                    st.error(f"保存失败：{(save_data.get('msg') if save_data else save_err)}")
         with judge_col:
             saved_problem_id = st.session_state.get('ai_saved_problem_id') or save_payload['id']
             render_page_link('打开题目管理页', '/%E9%A2%98%E7%9B%AE%E7%AE%A1%E7%90%86')

@@ -60,7 +60,7 @@ if is_unconfigured_openai_default:
     model_default = deepseek_defaults['model_name']
 
 with st.container(border=True):
-    st.subheader('当前配置状态', divider=False)
+    st.subheader('当前配置状态')
     cols = st.columns(4)
     cols[0].metric('Provider', config.get('provider', '-'))
     cols[1].metric('Model', config.get('model_name', '-'))
@@ -70,7 +70,7 @@ with st.container(border=True):
     st.caption(f"累计调用: {config.get('total_calls', 0)} 次，累计费用: {config.get('total_cost', 0)} {config.get('currency', 'CNY')}")
 
 with st.container(border=True):
-    st.subheader('保存模型配置', divider=False)
+    st.subheader('保存模型配置')
     st.info('默认已切换为 DeepSeek。若你没有特殊需求，直接填写 DeepSeek API Key 并保存即可。')
     st.caption('DeepSeek 推荐参数：Provider=`deepseek`，Base URL=`https://api.deepseek.com/v1`，Model 推荐 `deepseek-chat`；需要推理模型时可改成 `deepseek-reasoner`。')
     st.caption('密钥获取位置：DeepSeek 开放平台 https://platform.deepseek.com/ ，登录后进入 API Keys 页面创建即可。')
@@ -117,7 +117,7 @@ with test_left:
             st.error(f'连接失败：{ping_data.get("msg") if ping_data else ping_err}')
 
 with st.container(border=True):
-    st.subheader('费用统计', divider=False)
+    st.subheader('费用统计')
     if stats_code == 200 and isinstance(stats, dict):
         cols = st.columns(4)
         cols[0].metric('今日调用数', stats.get('today_count', 0))

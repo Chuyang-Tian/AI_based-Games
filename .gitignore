@@ -16,9 +16,19 @@ oj_judge/__pycache__/
 data/
 logs/
 user.db
+*.db
+webapp/*.db
 *.log
 _r_*.txt
 _r_server.log
+_st_log_*.txt
+_fastapi_stdout*.txt
+_fastapi_stderr*.txt
+_uvicorn_*.log
+_chk_profile.*
+_check*.log
+backup_original/
+temp/
 
 # ---- 前序调试 / 冒烟 / 爬虫临时脚本（下划线前缀全部视为临时）----
 _*.py

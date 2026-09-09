@@ -33,8 +33,8 @@ from userdb import (
     INITIAL_ADMIN_PASSWORD,
 )
 
-
-app = FastAPI()
+_OJ_VERSION = 'v1.4.1'
+app = FastAPI(title=f'OJ Debug Platform {_OJ_VERSION}', version=_OJ_VERSION)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 app.mount('/static', StaticFiles(directory=os.path.join(BASE_DIR, 'static')), name='static')
@@ -118,10 +118,12 @@ db = UserDatabase()
 _rate_limit = {}
 
 
-def _api_response(code: int, msg: str, data=None) -> JSONResponse:
+def _api_response(code: int, msg: str, data=None, headers: dict | None = None) -> JSONResponse:
+    hdrs = dict(headers) if headers else {}
     return JSONResponse(
         status_code=code,
         content={'code': code, 'msg': msg, 'data': data},
+        headers=hdrs or None,
     )
 
 
@@ -287,13 +289,25 @@ async def api_auth_me(request: Request):
     user = await current_user(request)
     if not user:
         return _api_response(401, '未登录')
+    submit_count = int(getattr(user, 'submit_count', 0) or 0)
+    resolve_count = int(getattr(user, 'resolve_count', 0) or 0)
+    try:
+        live_submit, live_resolve = await asyncio.to_thread(
+            db.recompute_user_stats, user.user_id
+        )
+        submit_count = int(live_submit)
+        resolve_count = int(live_resolve)
+        user.submit_count = submit_count
+        user.resolve_count = resolve_count
+    except Exception:
+        pass
     return _api_response(200, 'success', {
         'user_id': str(user.user_id),
         'username': user.username,
         'role': user.role,
         'join_time': user.join_time,
-        'submit_count': user.submit_count,
-        'resolve_count': user.resolve_count,
+        'submit_count': submit_count,
+        'resolve_count': resolve_count,
         'is_admin': user.role == USER_ROLE_ADMIN,
     })
 
@@ -384,9 +398,21 @@ async def api_user_info(request: Request, user_id_or_me: str):
         if viewer.role != USER_ROLE_ADMIN and viewer.user_id != target.user_id:
             return _api_response(403, '权限不足')
 
-    return _api_response(200, 'success', target.to_public())
+    payload = target.to_public()
+    try:
+        live_submit, live_resolve = await asyncio.to_thread(
+            db.recompute_user_stats, target.user_id
+        )
+        payload['submit_count'] = int(live_submit)
+        payload['resolve_count'] = int(live_resolve)
+        target.submit_count = int(live_submit)
+        target.resolve_count = int(live_resolve)
+    except Exception:
+        pass
+    return _api_response(200, 'success', payload)
 
 
+@app.get('/api/users/')
 @app.get('/api/users')
 async def api_user_list(request: Request):
     viewer = await current_user(request)
@@ -395,19 +421,35 @@ async def api_user_list(request: Request):
     if viewer.role != USER_ROLE_ADMIN:
         return _api_response(403, '仅管理员可查询用户列表')
 
-    try:
-        page = int(request.query_params.get('page', 1))
-        page_size = int(request.query_params.get('page_size', 20))
-    except ValueError:
-        return _api_response(400, 'page / page_size 必须为整数')
+    raw_page = request.query_params.get('page')
+    raw_page_size = request.query_params.get('page_size')
     keyword = request.query_params.get('keyword') or None
 
-    total, users = await asyncio.to_thread(
-        db.list_users, page=page, page_size=page_size, keyword=keyword
-    )
+    page = None
+    page_size = None
+    if raw_page is not None or raw_page_size is not None:
+        if raw_page is not None and raw_page_size is None:
+            return _api_response(400, 'page 非空时 page_size 必须提供')
+        try:
+            page = int(raw_page) if raw_page is not None else 1
+            page_size = int(raw_page_size)
+        except (ValueError, TypeError):
+            return _api_response(400, 'page / page_size 必须为整数')
+
+    try:
+        total, users = await asyncio.to_thread(
+            db.list_users, page=page, page_size=page_size, keyword=keyword
+        )
+    except ValueError as e:
+        msg = str(e)
+        if msg.startswith("400 "):
+            return _api_response(400, msg[4:].strip())
+        return _api_response(400, msg)
+
+    effective_page = page if page is not None else (1 if page_size is not None else None)
     return _api_response(200, 'success', {
         'total': total,
-        'page': page,
+        'page': effective_page,
         'page_size': page_size,
         'users': [u.to_public() for u in users],
     })
@@ -441,6 +483,7 @@ async def api_update_role(request: Request, user_id: int):
 
 # ========================== 语言管理 API (Task 2) ==========================
 
+@app.get('/api/languages/')
 @app.get('/api/languages')
 async def api_languages_list(request: Request):
     viewer = await current_user(request)
@@ -592,6 +635,7 @@ async def api_problems_create(request: Request):
     return _api_response(200, 'add success', {'id': created['id']})
 
 
+@app.get('/api/problems/{problem_id}/')
 @app.get('/api/problems/{problem_id}')
 async def api_problems_get(request: Request, problem_id: str):
     viewer = await current_user(request)
@@ -603,6 +647,7 @@ async def api_problems_get(request: Request, problem_id: str):
     return _api_response(200, 'success', p)
 
 
+@app.put('/api/problems/{problem_id}/')
 @app.put('/api/problems/{problem_id}')
 async def api_problems_update(request: Request, problem_id: str):
     viewer = await current_user(request)
@@ -1027,6 +1072,7 @@ async def api_judge(request: Request):
 
 # ========================== 评测管理 API (Task 4) ==========================
 
+@app.get('/api/submissions/')
 @app.get('/api/submissions')
 async def api_submissions_list(request: Request):
     user = await current_user(request)
@@ -1037,6 +1083,9 @@ async def api_submissions_list(request: Request):
     status = request.query_params.get('status') or None
     raw_page = request.query_params.get('page')
     raw_page_size = request.query_params.get('page_size')
+
+    if raw_uid in (None, '') and raw_pid in (None, ''):
+        return _api_response(400, '一级条件 user_id / problem_id 不可以全部为空')
 
     parsed_uid = None
     if raw_uid is not None:
@@ -1201,6 +1250,7 @@ async def api_submissions_detail(request: Request, submission_id: str):
     })
 
 
+@app.put('/api/submissions/{submission_id}/rejudge/')
 @app.put('/api/submissions/{submission_id}/rejudge')
 @require_login(allow_admin_only=True)
 async def api_submissions_rejudge(request: Request, submission_id: str, viewer=None):
@@ -1361,6 +1411,7 @@ async def api_submissions_log(request: Request, submission_id: str):
     })
 
 
+@app.put('/api/problems/{problem_id}/log_visibility/')
 @app.put('/api/problems/{problem_id}/log_visibility')
 @require_login(allow_admin_only=True)
 async def api_problems_log_visibility(request: Request, problem_id: str, viewer=None):
@@ -1490,17 +1541,18 @@ async def api_logs_access(request: Request, viewer=None):
             return _api_response(403, msg[4:].strip(), None)
         return _api_response(403, str(e), None)
     effective_page = page if page is not None else (1 if page_size is not None else None)
-    return _api_response(200, 'success', {
-        'total': total,
-        'page': effective_page,
-        'page_size': page_size,
-        'logs': logs,
-    })
+    extra_headers = {
+        'X-Total-Count': str(total),
+        'X-Page': str(effective_page) if effective_page is not None else '',
+        'X-Page-Size': str(page_size) if page_size is not None else '',
+    }
+    return _api_response(200, 'success', logs, headers=extra_headers)
 
 
 # ========================== Task 6: 新增/规范对齐 API ==========================
 
 @app.post('/api/users/')
+@app.post('/api/users')
 async def api_users_register(request: Request):
     try:
         data = await request.json() or {}
@@ -1550,6 +1602,7 @@ async def api_users_info(request: Request, user_id: str):
     return await api_user_info(request, user_id)
 
 
+@app.put('/api/users/{user_id}/role/')
 @app.put('/api/users/{user_id}/role')
 async def api_users_update_role(request: Request, user_id: int):
     return await api_update_role(request, user_id)
@@ -1564,6 +1617,7 @@ async def internal_problems_full(request: Request):
     return _api_response(200, 'success', data)
 
 
+@app.post('/api/users/admin/')
 @app.post('/api/users/admin')
 @require_login(allow_admin_only=True)
 async def api_users_admin_create(request: Request, viewer=None):
@@ -1590,6 +1644,7 @@ async def api_users_admin_create(request: Request, viewer=None):
     })
 
 
+@app.post('/api/reset/')
 @app.post('/api/reset')
 @require_login(allow_admin_only=True)
 async def api_system_reset(request: Request, viewer=None):
@@ -2304,10 +2359,14 @@ async def api_ai_config_put(request: Request, viewer=None):
     return _api_response(200, '配置已保存')
 
 
+@app.put('/api/ai/model-config/')
 @app.put('/api/ai/model-config')
 @require_login(allow_admin_only=False)
 async def api_ai_model_config_compat(request: Request, viewer=None):
     """兼容文档中的建议路径和字段名。"""
+    is_admin = bool(viewer) and viewer.role == USER_ROLE_ADMIN
+    if not is_admin:
+        return _api_response(403, '普通用户暂不允许修改全局 AI 模型配置（请联系管理员）')
     try:
         data = await request.json() or {}
     except Exception:
@@ -2331,16 +2390,27 @@ async def api_ai_model_config_compat(request: Request, viewer=None):
     if 'mock_mode' in data:
         compat_payload['mock_mode'] = data.get('mock_mode')
 
-    class _CompatRequest:
-        def __init__(self, payload):
-            self._payload = payload
-
-        async def json(self):
-            return self._payload
-
-    resp = await api_ai_config_put(_CompatRequest(compat_payload), viewer=viewer)
-    if getattr(resp, 'status_code', 200) != 200:
-        return resp
+    fields = ['provider','base_url','model_name','price_input_per_1k','price_output_per_1k','currency','allow_user_problem_create','mock_mode']
+    updates = {k: compat_payload[k] for k in fields if k in compat_payload}
+    if 'allow_user_problem_create' in updates:
+        updates['allow_user_problem_create'] = 1 if updates['allow_user_problem_create'] in (1,True,'1','true','yes') else 0
+    if 'mock_mode' in updates:
+        updates['mock_mode'] = 1 if updates['mock_mode'] in (1,True,'1','true','yes') else 0
+    if 'price_input_per_1k' in updates:
+        updates['price_input_per_1k'] = float(updates['price_input_per_1k'] or 0)
+    if 'price_output_per_1k' in updates:
+        updates['price_output_per_1k'] = float(updates['price_output_per_1k'] or 0)
+    new_key = compat_payload.get('api_key')
+    cols, vals = [], []
+    for k, v in updates.items():
+        cols.append(f'{k}=?'); vals.append(v)
+    if new_key and new_key != '*****' and isinstance(new_key, str) and new_key.strip():
+        cols.append('api_key_encrypted=?')
+        vals.append(encrypt_api_key(new_key.strip()))
+    cols.append('updated_at=?'); vals.append(_now_ms())
+    vals.append(1)
+    with _ai_conn() as c:
+        c.execute(f'UPDATE ai_config SET {",".join(cols)} WHERE id=?', vals)
 
     cfg = _ai_load_config()
     return _api_response(200, 'model config updated', {
@@ -2995,6 +3065,7 @@ async def api_ai_generate_problem(request: Request, viewer=None):
 
 
 @app.post('/api/ai/problem-tasks/')
+@app.post('/api/ai/problem-tasks')
 @require_login(allow_admin_only=False)
 async def api_ai_problem_tasks_compat(request: Request, viewer=None):
     return await api_ai_generate_problem(request, viewer=viewer)
@@ -3096,6 +3167,7 @@ async def api_ai_task_cancel(task_id: str, request: Request, viewer=None):
     return _api_response(200, 'ok', {'cancelled': ok})
 
 
+@app.post('/api/ai/problem-tasks/{task_id}/cancel/')
 @app.post('/api/ai/problem-tasks/{task_id}/cancel')
 @require_login(allow_admin_only=False)
 async def api_ai_problem_task_cancel_compat(task_id: str, request: Request, viewer=None):
@@ -3358,7 +3430,7 @@ _original_submissions_list_handler = None
 
 if __name__ == '__main__':
     print('=' * 60)
-    print('  OJ 调试平台 Web 服务启动中...')
+    print(f'  OJ 调试平台 Web 服务启动中...  [{_OJ_VERSION}]')
     print('  访问地址: http://127.0.0.1:5000/')
     print('  初始管理员: admin / ' + INITIAL_ADMIN_PASSWORD)
     print('=' * 60)

@@ -8,7 +8,7 @@ import streamlit as st
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from common import api, current_user, ensure_init, is_admin, page_url, render_page_link, render_subheader, render_topbar, get_locale
+from common import api, current_user, ensure_init, is_admin, page_url, render_page_link, render_subheader, render_topbar, get_locale, OJ_VERSION
 
 st.set_page_config(page_title='判题首页 · OJ', page_icon='🏠', layout='wide', initial_sidebar_state='collapsed')
 
@@ -28,7 +28,7 @@ def render_preview_card(title, items, empty_text, route_key, kind):
     with st.container(border=True):
         head_left, head_right = st.columns([6, 2])
         with head_left:
-            st.subheader(title, divider=False)
+            st.subheader(title)
         with head_right:
             render_page_link(t('查看全部', 'View All'), page_url(route_key))
 
@@ -78,7 +78,10 @@ exams = fetch_list('/api/exams') if user else []
 with st.container(border=True):
     top_left, top_right = st.columns([7, 3])
     with top_left:
-        st.subheader('欢迎来到 OJ 调试平台', divider=False)
+        st.markdown(
+            f'<h3 style="margin:0;padding:0;">欢迎来到 OJ 调试平台  <span style="color:#9ca3af;font-size:14px;font-weight:400;">（{OJ_VERSION}）</span></h3>',
+            unsafe_allow_html=True,
+        )
         if user:
             role_text = t('管理员', 'Admin') if is_admin() else t('普通用户', 'User')
             st.caption(t(f'当前登录：{user.get("username", "")}（{role_text}）', f'Current user: {user.get("username", "")} ({role_text})'))

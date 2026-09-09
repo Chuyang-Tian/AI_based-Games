@@ -47,7 +47,7 @@ filters = st.session_state.get('submission_filters', {
 })
 
 with st.container(border=True):
-    st.subheader('筛选条件', divider=False)
+    st.subheader('筛选条件')
     with st.form('submission_filter_form'):
         c1, c2, c3, c4 = st.columns(4)
         with c1:
@@ -104,7 +104,7 @@ for item in submissions or []:
     })
 
 with st.container(border=True):
-    st.subheader('提交目录', divider=False)
+    st.subheader('提交目录')
     st.caption('这里仅展示目录与筛选；详细信息进入独立提交详情页。')
     stats = st.columns(4)
     stats[0].metric('当前页记录数', len(rows))

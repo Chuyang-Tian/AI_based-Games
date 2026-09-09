@@ -43,7 +43,7 @@ page_size = 20
 keyword = st.session_state.get('users_keyword', '')
 
 with st.container(border=True):
-    st.subheader('筛选与刷新', divider=False)
+    st.subheader('筛选与刷新')
     col1, col2, col3 = st.columns([4, 2, 2])
     with col1:
         input_keyword = st.text_input('关键字', value=keyword, placeholder='按用户名搜索')
@@ -72,7 +72,7 @@ if int(st.session_state.get('users_page', 1) or 1) != page:
     st.rerun()
 
 with st.container(border=True):
-    st.subheader('创建管理员账号', divider=False)
+    st.subheader('创建管理员账号')
     with st.form('create_admin_form'):
         c1, c2 = st.columns(2)
         with c1:
@@ -103,7 +103,7 @@ for item in users or []:
     })
 
 with st.container(border=True):
-    st.subheader('用户列表', divider=False)
+    st.subheader('用户列表')
     stats = st.columns(4)
     stats[0].metric('当前页用户数', len(rows))
     stats[1].metric('查询总数', total)
@@ -116,7 +116,7 @@ with st.container(border=True):
 
 if rows:
     with st.container(border=True):
-        st.subheader('角色调整', divider=False)
+        st.subheader('角色调整')
         choice_map = {f"{row['用户 ID']} · {row['用户名']}": row for row in rows}
         selection = st.selectbox('选择用户', list(choice_map.keys()))
         selected = choice_map[selection]
