@@ -79,7 +79,7 @@ div[data-testid="stMainBlockContainer"] {
   margin-left: auto !important;
   margin-right: auto !important;
   box-sizing: border-box;
-  padding-top: 0.75rem;
+  padding-top: 1.25rem;
   padding-bottom: 2rem;
   padding-left: 1.25rem;
   padding-right: 1.25rem;
@@ -88,6 +88,38 @@ div[data-testid="stAppViewContainer"]::before{
   content:""; display:block; height:6px; width:100%;
   background:linear-gradient(135deg,#c62828 0%,#8e0000 100%);
   border-radius:0 0 8px 8px;
+}
+.oj-pill {
+  display: inline-block;
+  margin: 0 0.35rem 0.35rem 0;
+  padding: 0.15rem 0.65rem;
+  border-radius: 999px;
+  background: #f5f5f5;
+  border: 1px solid #e5e7eb;
+  color: #374151;
+  font-size: 0.78rem;
+  line-height: 1.35;
+  white-space: nowrap;
+}
+.oj-pill.oj-pill-active {
+  background: #fff5f5;
+  border-color: #fecaca;
+  color: #b91c1c;
+}
+.oj-diff-easy {
+  background: #ecfdf5;
+  border-color: #bbf7d0;
+  color: #15803d;
+}
+.oj-diff-medium {
+  background: #fffbeb;
+  border-color: #fde68a;
+  color: #b45309;
+}
+.oj-diff-hard {
+  background: #fef2f2;
+  border-color: #fecaca;
+  color: #b91c1c;
 }
 </style>
 """

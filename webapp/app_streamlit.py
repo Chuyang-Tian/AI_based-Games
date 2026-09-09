@@ -1,21 +1,30 @@
 # -*- coding: utf-8 -*-
 """
-OJ 判题首页（Streamlit 原生组件版）
+OJ 判题首页（概览页）
 """
-import sys, os, random
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+import os
+import random
+import sys
+
 import streamlit as st
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 from common import (
-    ensure_init, render_topbar, render_subheader,
-    current_user, require_login_error,
-    load_all_problems, get_filtered_problems, page_url, toast_safe,
+    current_user,
+    ensure_init,
+    load_all_problems,
+    page_url,
+    render_subheader,
+    render_topbar,
+    require_login_error,
+    toast_safe,
 )
 
-st.set_page_config(page_title='OJ 调试平台 · 判题首页', page_icon='💻',
-                   layout='wide', initial_sidebar_state='collapsed')
+st.set_page_config(page_title='OJ 调试平台 · 判题首页', page_icon='💻', layout='wide', initial_sidebar_state='collapsed')
 
 ensure_init()
-render_topbar('Python 判题引擎')
+render_topbar('平台概览')
 render_subheader([('🏠 判题首页', None)], 'home')
 
 user = current_user()
@@ -25,101 +34,95 @@ if not user:
     st.stop()
 
 problems = load_all_problems()
-if 'home_diff' not in st.session_state:
-    st.session_state['home_diff'] = ''
-if 'home_tags' not in st.session_state:
-    st.session_state['home_tags'] = []
+easy_count = sum(1 for item in problems if item.get('difficulty') == '简单')
+medium_count = sum(1 for item in problems if item.get('difficulty') == '中等')
+hard_count = sum(1 for item in problems if item.get('difficulty') == '困难')
+all_tags = sorted({tag for item in problems for tag in (item.get('tags') or [])})
+random_problem = random.choice(problems) if problems else None
+recent = problems[:6]
 
-# 主体两列（左筛选 / 右题目卡片列表）
-col_left, col_right = st.columns([1, 3], gap='large')
+top_stats = st.columns(4)
+top_stats[0].metric('题库总数', len(problems))
+top_stats[1].metric('简单题', easy_count)
+top_stats[2].metric('中等题', medium_count)
+top_stats[3].metric('困难题', hard_count)
 
-with col_left:
-    filter_box = st.container(border=True)
-    with filter_box:
-        st.markdown('**🔍 搜索题目**')
-        kw = st.text_input('搜索输入框', label_visibility='collapsed',
-                           placeholder='按 ID 或标题搜索...', key='home_search')
+hero_left, hero_right = st.columns([2, 1], gap='large')
 
-        st.markdown('**🎯 难度筛选**')
-        d1, d2, d3, d4 = st.columns(4)
-        diff_buttons = [('', '全部'), ('简单', '简单'), ('中等', '中等'), ('困难', '困难')]
-        for i, (val, label) in enumerate(diff_buttons):
-            active = (st.session_state['home_diff'] == val)
-            with [d1, d2, d3, d4][i]:
-                if st.button(label, use_container_width=True, type='primary' if active else 'secondary',
-                             key=f'home_diff_{val or "all"}'):
-                    st.session_state['home_diff'] = val
-                    st.rerun()
+with hero_left:
+    with st.container(border=True):
+        st.subheader('开始使用', divider=False)
+        st.caption('首页只保留概览与入口，题目浏览、提交记录、判题过程都放在独立页面里。')
+        action_a, action_b, action_c = st.columns(3)
+        with action_a:
+            st.link_button('进入题库浏览', page_url('problems'), type='primary', use_container_width=True)
+        with action_b:
+            st.link_button('查看我的提交', page_url('submissions'), use_container_width=True)
+        with action_c:
+            if random_problem:
+                st.link_button('随机挑一题', page_url('problem_detail', id=random_problem.get('id')), use_container_width=True)
 
-        st.markdown('**🏷️ 标签筛选**')
-        all_tags = sorted({t for p in problems for t in (p.get('tags') or [])})
-        if all_tags:
-            sel_tags = st.multiselect('已选标签（多选）', all_tags, default=st.session_state['home_tags'],
-                                      label_visibility='collapsed', key='home_tags_ms')
-            st.session_state['home_tags'] = sel_tags or []
+    with st.container(border=True):
+        st.subheader('快速入口', divider=False)
+        quick_a, quick_b, quick_c = st.columns(3)
+        with quick_a:
+            st.markdown('**题库浏览**')
+            st.caption('按题号、标题、难度、标签筛选，并进入独立题目页。')
+            st.link_button('打开题库', page_url('problems'), use_container_width=True)
+        with quick_b:
+            st.markdown('**提交记录**')
+            st.caption('查看个人提交目录，再进入独立提交详情页。')
+            st.link_button('打开提交日志', page_url('submissions'), use_container_width=True)
+        with quick_c:
+            st.markdown('**AI 命题**')
+            st.caption('查看 AI 配置、任务进度和生成结果。')
+            st.link_button('打开 AI 页面', page_url('ai'), use_container_width=True)
+
+with hero_right:
+    with st.container(border=True):
+        st.subheader('题库画像', divider=False)
+        st.caption(f'当前共收录 {len(all_tags)} 个标签。')
+        preview_tags = all_tags[:18]
+        if preview_tags:
+            pill_html = ''.join(f'<span class="oj-pill">{tag}</span>' for tag in preview_tags)
+            st.markdown(pill_html, unsafe_allow_html=True)
         else:
-            st.caption('（暂无标签）')
+            st.caption('暂无标签数据')
 
-        st.divider()
-        st.metric('📚 题库总数', f'{len(problems)} 道')
+    with st.container(border=True):
+        st.subheader('刷新数据', divider=False)
+        if st.button('刷新题库缓存', use_container_width=True):
+            load_all_problems(force=True)
+            toast_safe('题库缓存已刷新', 'ok')
+            st.rerun()
 
-        b1, b2 = st.columns(2)
-        with b1:
-            if st.button('🔄 刷新题库', use_container_width=True, key='home_refresh'):
-                load_all_problems(force=True)
-                toast_safe('题库已刷新', 'ok')
-                st.rerun()
-        with b2:
-            if problems:
-                pick = random.choice(problems)
-                st.link_button('⚡ 随机选题', page_url('problem_detail', id=pick['id']), use_container_width=True)
-
-with col_right:
-    # 顶部四宫格统计
-    m1, m2, m3, m4 = st.columns(4)
-    m1.metric('📚 题库总数', f'{len(problems)} 道')
-    m2.metric('🟢 简单', f'{sum(1 for p in problems if p.get("difficulty") == "简单")} 道')
-    m3.metric('🟡 中等', f'{sum(1 for p in problems if p.get("difficulty") == "中等")} 道')
-    m4.metric('🔴 困难', f'{sum(1 for p in problems if p.get("difficulty") == "困难")} 道')
-
-    # 应用筛选
-    sel_tags = set(st.session_state.get('home_tags') or [])
-    filtered = get_filtered_problems(problems, st.session_state.get('home_search', ''),
-                                     st.session_state.get('home_diff', ''), list(sel_tags))
-    st.caption(f'当前筛选后共 **{len(filtered)}** 道题目。先进入独立题目页查看题面，再按需跳转到判题页或提交记录页。')
-
-    if not filtered:
-        st.info('（没有匹配的题目，请调整搜索或筛选条件）')
+with st.container(border=True):
+    st.subheader('最近题目', divider=False)
+    st.caption('展示少量样例题目，详细浏览请进入题库页。')
+    if not recent:
+        st.info('当前没有题目数据。')
     else:
-        for p in filtered:
-            card = st.container(border=True)
-            with card:
-                pid = p.get('id') or ''
-                title = p.get('title') or ''
-                diff = p.get('difficulty') or ''
-                author = p.get('author') or 'system'
-                tags = p.get('tags') or []
-                tl = p.get('time_limit') or '?'
-                ml = p.get('memory_limit') or '?'
-                desc_summary = (p.get('description') or '')[:80]
-                top1, top2, top3 = st.columns([7, 1, 1])
-                detail_url = page_url('problem_detail', id=pid)
-                judge_url = page_url('judge', id=pid)
-                with top1:
-                    st.subheader(f'{pid}  ·  {title}', divider=False)
-                    cap = f'难度: {diff or "-"}  |  作者: {author}  |  TL: {tl}s  |  ML: {ml}MB'
-                    if tags:
-                        cap += f'  |  标签: {", ".join(tags)}'
-                    st.caption(cap)
-                    st.caption(desc_summary + (' …' if len(desc_summary) >= 80 else ''))
-                with top2:
-                    st.caption(' ')
-                    st.link_button('详情', detail_url, use_container_width=True,
-                                   key=f'detail_btn_{pid}')
-                with top3:
-                    st.caption(' ')
-                    st.link_button('➜ 判题', judge_url, type='primary',
-                                   use_container_width=True,
-                                   key=f'go_judge_{pid}')
+        for item in recent:
+            left, mid, right = st.columns([7, 2, 2])
+            diff_cls = {
+                '简单': 'oj-diff-easy',
+                '中等': 'oj-diff-medium',
+                '困难': 'oj-diff-hard',
+            }.get(item.get('difficulty'), '')
+            tags_html = ''.join(f'<span class="oj-pill">{tag}</span>' for tag in (item.get('tags') or [])[:4])
+            with left:
+                st.markdown(f"**{item.get('id')} · {item.get('title')}**")
+                st.markdown(
+                    f'<span class="oj-pill {diff_cls}">{item.get("difficulty") or "未标注"}</span>'
+                    f'<span class="oj-pill">TL {item.get("time_limit") or "-" }s</span>'
+                    f'<span class="oj-pill">ML {item.get("memory_limit") or "-" }MB</span>',
+                    unsafe_allow_html=True,
+                )
+                if tags_html:
+                    st.markdown(tags_html, unsafe_allow_html=True)
+            with mid:
+                st.link_button('题目详情', page_url('problem_detail', id=item.get('id')), use_container_width=True)
+            with right:
+                st.link_button('进入判题', page_url('judge', id=item.get('id')), type='primary', use_container_width=True)
 
 st.caption('© OJ 在线判题平台 · Streamlit 前端 + FastAPI 后端（Python 双栈架构）')
