@@ -233,6 +233,28 @@ def _get_language_config(lang_name: str) -> dict:
     return {'name': str(lang_name or 'python').strip().lower()}
 
 
+def _guess_code_language(code: str) -> Optional[str]:
+    text = str(code or '').strip()
+    if not text:
+        return None
+    lowered = text.lower()
+    if '#include' in text or 'using namespace std' in text or ('cout <<' in text and 'int main' in text):
+        return 'cpp'
+    if 'public class main' in lowered or 'system.out.println' in lowered or 'scanner ' in lowered:
+        return 'java'
+    if 'def ' in text or 'import sys' in text or 'print(' in text:
+        return 'python'
+    return None
+
+
+def _normalize_submission_language(language: str, code: str, lang_names: list[str]) -> tuple[str, Optional[str]]:
+    selected = str(language or 'python').strip().lower()
+    guessed = _guess_code_language(code)
+    if guessed and guessed in lang_names and guessed != selected:
+        return guessed, selected
+    return selected, None
+
+
 def _user_public_viewer(user, viewer=None):
     pub = user.to_public()
     is_self = viewer and viewer.user_id == user.user_id
@@ -813,6 +835,7 @@ async def api_submissions_create(request: Request):
         lang_names = await asyncio.to_thread(db.list_languages, just_names=True)
     else:
         lang_names = await asyncio.to_thread(db.list_enabled_languages, just_names=True)
+    language, corrected_from = _normalize_submission_language(language, code, lang_names)
     if language not in lang_names:
         return _api_response(404, f'语言 [{language}] 不存在或未启用')
     if not _check_rate_limit(user.user_id):
@@ -858,6 +881,8 @@ async def api_submissions_create(request: Request):
     return _api_response(200, 'success', {
         'submission_id': str(sid),
         'status': 'pending',
+        'language': language,
+        'language_corrected_from': corrected_from,
     })
 
 
@@ -945,6 +970,7 @@ async def api_judge(request: Request):
         lang_names = await asyncio.to_thread(db.list_languages, just_names=True)
     else:
         lang_names = await asyncio.to_thread(db.list_enabled_languages, just_names=True)
+    language, corrected_from = _normalize_submission_language(language, code, lang_names)
     if language not in lang_names:
         return _api_response(404, f'语言 [{language}] 不存在或未启用')
 
@@ -957,6 +983,8 @@ async def api_judge(request: Request):
     result = await asyncio.to_thread(judger.judge, code, test_cases, lang_config)
     serialized = serialize_result(result)
     serialized['cases'] = serialized['case_results']
+    serialized['language'] = language
+    serialized['language_corrected_from'] = corrected_from
 
     total = result.total_cases
     passed = result.passed_cases
@@ -1095,9 +1123,9 @@ async def api_submissions_detail(request: Request, submission_id: str):
 
     passed = int(sub.get('pass_cases') or 0)
     total = int(sub.get('total_cases') or 0)
-    score = passed * 10
+    score = int(sub.get('score') or 0)
     counts = total * 10
-    status_resp = 'success' if passed == total and total > 0 else 'error'
+    status_resp = status_str
     compile_info = {'result': 'success', 'message': ''}
     run_info = {'result': 'finished', 'message': f'{passed} passed of {total}'}
 
@@ -1108,13 +1136,22 @@ async def api_submissions_detail(request: Request, submission_id: str):
         case_results = []
     error_info_parts = []
     has_any_error = False
+    compile_parts = []
     for cr in case_results:
         st = cr.get('status', '')
+        em = cr.get('error_message') or ''
+        if st == 'CE' and em:
+            compile_parts.append(_sanitize_error(em))
         if st != 'AC':
-            em = cr.get('error_message') or ''
             if em:
                 has_any_error = True
                 error_info_parts.append(_sanitize_error(em))
+    if compile_parts:
+        compile_info = {'result': 'error', 'message': '\n'.join([p for p in compile_parts if p]).strip()}
+    elif status_str == 'CE':
+        compile_info = {'result': 'error', 'message': '编译失败，请检查语言选择与源码语法。'}
+    if status_str in ('CE', 'WA', 'RE', 'TLE', 'MLE', 'SE'):
+        run_info = {'result': 'finished', 'message': f'{status_str} · {passed} passed of {total}'}
     if can_see_error:
         error_info = '\n'.join([p for p in error_info_parts if p]) or None
     else:
@@ -1122,9 +1159,15 @@ async def api_submissions_detail(request: Request, submission_id: str):
 
     return _api_response(200, 'success', {
         'submission_id': str(submission_id),
+        'problem_id': sub.get('problem_id'),
+        'user_id': sub.get('user_id'),
+        'language': sub.get('language') or 'python',
         'status': status_resp,
         'score': score,
         'counts': counts,
+        'created_at': sub.get('created_at') or '',
+        'time_ms': int(sub.get('total_time_ms') or 0),
+        'memory_kb': int(float(sub.get('max_memory_mb') or 0) * 1024),
         'compile_info': compile_info,
         'run_info': run_info,
         'error_info': error_info,

@@ -4,7 +4,7 @@
 import html
 import os
 import re
-from urllib.parse import quote as url_quote
+from urllib.parse import quote as url_quote, urlencode
 
 
 import requests
@@ -29,7 +29,7 @@ ROUTE = {
     'ai_config': 'pages/⚙️_AI配置.py',
 }
 ROUTE_ORDER = ['home', 'classes', 'assignments', 'exams', 'problems', 'submissions', 'users', 'ai', 'ai_config']
-ROUTE_LABELS = {
+ROUTE_LABELS_ZH = {
     'home': '🏠 判题首页',
     'classes': '🎓 班级',
     'assignments': '📝 作业',
@@ -41,7 +41,7 @@ ROUTE_LABELS = {
     'ai': '🤖 AI 命题',
     'ai_config': '⚙️ AI 配置',
 }
-ROUTE_LABELS_USER = {
+ROUTE_LABELS_USER_ZH = {
     'home': '🏠 判题首页',
     'classes': '🎓 我的班级',
     'assignments': '📝 我的作业',
@@ -50,6 +50,28 @@ ROUTE_LABELS_USER = {
     'problems': '📚 题库浏览',
     'submissions': '📋 我的提交',
     'ai': '🤖 AI 命题',
+}
+ROUTE_LABELS_EN = {
+    'home': '🏠 Home',
+    'classes': '🎓 Classes',
+    'assignments': '📝 Assignments',
+    'exams': '📝 Exams',
+    'judge': '⚖️ Judge',
+    'problems': '🗂 Problem Admin',
+    'submissions': '📋 Submissions',
+    'users': '👥 Users',
+    'ai': '🤖 AI Problem Gen',
+    'ai_config': '⚙️ AI Config',
+}
+ROUTE_LABELS_USER_EN = {
+    'home': '🏠 Home',
+    'classes': '🎓 My Classes',
+    'assignments': '📝 My Assignments',
+    'exams': '📝 My Exams',
+    'judge': '⚖️ Judge',
+    'problems': '📚 Problemset',
+    'submissions': '📋 My Submissions',
+    'ai': '🤖 AI Problem Gen',
 }
 ROUTE_TO_SLUG = {
     'home': '',
@@ -100,6 +122,106 @@ THEME_OPTIONS = {
         'accent_text': '#111827',
     },
 }
+
+LOCALE_OPTIONS = {
+    'zh-CN': '中文',
+    'en-US': 'English',
+}
+
+I18N = {
+    'en-US': {
+        'platform_title': '💻 OJ Debug Platform',
+        'build_version': 'version1.1',
+        'theme_picker': 'Theme',
+        'locale_picker': 'Language',
+        'logout': 'Log Out',
+        'login_or_register': 'Login / Sign Up',
+        'guest_user': 'Guest',
+        'admin_role': 'Admin',
+        'user_role': 'User',
+        'not_logged_in': 'Not logged in',
+        'login_required': 'Please log in first.',
+        'admin_required': 'This page is available to admins only.',
+        'return_home': 'Back Home',
+        'view_all': 'View All',
+        'sample_cases': 'Public Samples',
+        'sample_input': 'Sample Input',
+        'sample_output': 'Sample Output',
+        'sample_explanation': 'Explanation',
+        'empty_content': 'No content yet.',
+        'login_success': 'Logged in successfully',
+        'login_failed': 'Login failed: {reason}',
+        'register_failed': 'Sign up failed: {reason}',
+        'empty_username_password': 'Username and password are required.',
+        'password_mismatch': 'The two passwords do not match.',
+        'default_admin': 'Default admin: `admin / admintestpassword`',
+        'nav_separator': '  >  ',
+        'theme_red': 'Red',
+        'theme_pink': 'Pink',
+        'theme_blue': 'Blue',
+        'theme_black': 'Black',
+        'page_home': 'Home Overview',
+        'page_problem_detail': 'Problem Detail',
+        'page_submission_detail': 'Submission Detail',
+        'page_judge': 'Judge',
+        'page_problem_admin': 'Problem Admin',
+        'page_problemset': 'Problemset',
+        'page_submissions': 'Submissions',
+        'page_my_submissions': 'My Submissions',
+        'page_classes': 'Classes',
+        'page_assignments': 'Assignments',
+        'page_exams': 'Exams',
+        'manage_config': 'Settings',
+        'public_samples': 'Public Samples',
+        'testcases_data': 'Hidden Testcases',
+        'save_problem': 'Save Problem',
+        'delete_problem': 'Delete Problem',
+        'public_case_detail': 'Expose testcase details',
+        'visibility_label': 'Result visibility',
+        'visibility_hidden': 'Hidden by default',
+        'visibility_after_submit': 'Visible after submission',
+        'visibility_public': 'Always visible',
+        'allow_input': 'Allow input view',
+        'allow_expected': 'Allow expected output view',
+        'allow_actual': 'Allow actual output view',
+        'allow_error': 'Allow error details view',
+        'judge_status_hint': 'Possible language mismatch. The system kept running, but you may want to switch the language and retry.',
+    }
+}
+
+
+def get_locale():
+    key = st.session_state.get('oj_locale', 'zh-CN')
+    return key if key in LOCALE_OPTIONS else 'zh-CN'
+
+
+def tr(key: str, default: str | None = None, **kwargs):
+    locale = get_locale()
+    value = I18N.get(locale, {}).get(key, default if default is not None else key)
+    if kwargs:
+        try:
+            return str(value).format(**kwargs)
+        except Exception:
+            return str(value)
+    return str(value)
+
+
+def get_theme_option_label(key: str):
+    labels = {
+        'red': tr('theme_red', '红'),
+        'pink': tr('theme_pink', '粉'),
+        'blue': tr('theme_blue', '蓝'),
+        'black': tr('theme_black', '黑'),
+    }
+    icon = '🎨'
+    return f'{icon} {labels.get(key, THEME_OPTIONS.get(key, {}).get("label", key))}'
+
+
+def get_route_label_map():
+    locale = get_locale()
+    if locale == 'en-US':
+        return ROUTE_LABELS_EN if is_admin() else ROUTE_LABELS_USER_EN
+    return ROUTE_LABELS_ZH if is_admin() else ROUTE_LABELS_USER_ZH
 
 
 def get_theme_key():
@@ -309,6 +431,46 @@ div[data-testid="stVerticalBlock"] {
   background: linear-gradient(135deg, var(--oj-accent-2) 0%, var(--oj-accent-2) 100%);
   border-color: var(--oj-accent-2);
 }
+[data-testid="stBaseButton-primary"],
+[data-testid="stBaseButton-secondary"],
+.stButton > button,
+div[data-testid="stFormSubmitButton"] > button {
+  border-radius: 0.75rem !important;
+  border: 1px solid var(--oj-accent-2) !important;
+  background: linear-gradient(135deg, var(--oj-accent-1) 0%, var(--oj-accent-2) 100%) !important;
+  color: #ffffff !important;
+  box-shadow: none !important;
+}
+[data-testid="stBaseButton-primary"]:hover,
+[data-testid="stBaseButton-secondary"]:hover,
+.stButton > button:hover,
+div[data-testid="stFormSubmitButton"] > button:hover {
+  border-color: var(--oj-accent-2) !important;
+  filter: brightness(0.96);
+}
+.stButton > button[kind="secondary"],
+div[data-testid="stFormSubmitButton"] > button[kind="secondary"] {
+  background: #ffffff !important;
+  color: var(--oj-accent-text) !important;
+  border: 1px solid var(--oj-accent-border) !important;
+}
+button[data-baseweb="tab"] {
+  border-radius: 999px !important;
+}
+button[data-baseweb="tab"][aria-selected="true"] {
+  background: var(--oj-accent-soft) !important;
+  color: var(--oj-accent-text) !important;
+}
+div[data-baseweb="select"] > div,
+div[data-baseweb="input"] > div,
+textarea {
+  border-color: var(--oj-accent-border) !important;
+}
+input:focus, textarea:focus,
+div[data-baseweb="select"] *:focus,
+div[data-baseweb="input"] *:focus {
+  box-shadow: 0 0 0 1px var(--oj-accent-1) !important;
+}
 </style>
 """
     )
@@ -380,11 +542,11 @@ def toast_safe(msg, kind='info'):
 
 
 def require_login_error():
-    st.warning('请先登录后再使用这个页面。')
+    st.warning(tr('login_required', '请先登录后再使用这个页面。'))
 
 
 def require_admin_error():
-    st.error('只有管理员可以访问这个页面。')
+    st.error(tr('admin_required', '只有管理员可以访问这个页面。'))
 
 
 def clear_problem_cache():
@@ -419,7 +581,7 @@ def goto(route_key, **query_kwargs):
 
 @st.dialog('登录 / 注册', width='small')
 def login_dialog():
-    st.caption('默认管理员：`admin / admintestpassword`')
+    st.caption(tr('default_admin', '默认管理员：`admin / admintestpassword`'))
     mode = st.radio('模式', ['登录', '注册'], horizontal=True, label_visibility='collapsed')
     with st.form('login_register_form'):
         username = st.text_input('用户名')
@@ -431,42 +593,55 @@ def login_dialog():
     if not submitted:
         return
     if not username.strip() or not password:
-        st.warning('用户名和密码不能为空')
+        st.warning(tr('empty_username_password', '用户名和密码不能为空'))
         return
     if mode == '注册':
         if password != confirm_password:
-            st.warning('两次输入的密码不一致')
+            st.warning(tr('password_mismatch', '两次输入的密码不一致'))
             return
         code, data, err = api('POST', '/api/users/', {'username': username.strip(), 'password': password})
         if code != 200:
-            st.error(f'注册失败：{data.get("msg") if data else err}')
+            st.error(tr('register_failed', '注册失败：{reason}', reason=data.get("msg") if data else err))
             return
     code, data, err = api('POST', '/api/auth/login', {'username': username.strip(), 'password': password})
     if code == 200 and isinstance(data, dict):
         refresh_me()
-        toast_safe('登录成功', 'ok')
+        toast_safe(tr('login_success', '登录成功'), 'ok')
         st.rerun()
-    st.error(f'登录失败：{data.get("msg") if data else err}')
+    st.error(tr('login_failed', '登录失败：{reason}', reason=data.get("msg") if data else err))
 
 
 def render_topbar(page_tag=''):
     user = current_user()
     with st.container(border=True):
-        left, middle, build_col, theme_col, right = st.columns([4, 2.5, 1.5, 2, 3])
+        left, middle, build_col, locale_col, theme_col, right = st.columns([4, 2.4, 1.3, 1.8, 2.1, 3])
         with left:
-            st.subheader('💻 OJ 调试平台', divider=False)
+            st.subheader(tr('platform_title', '💻 OJ 调试平台'), divider=False)
         with middle:
             if page_tag:
                 st.caption(f'📌 {page_tag}')
         with build_col:
-            st.caption(f'版本 {get_build_label()}')
+            st.caption(get_build_label())
+        with locale_col:
+            current_locale = get_locale()
+            locale_key = st.selectbox(
+                tr('locale_picker', '语言'),
+                options=list(LOCALE_OPTIONS.keys()),
+                index=list(LOCALE_OPTIONS.keys()).index(current_locale),
+                format_func=lambda key: LOCALE_OPTIONS.get(key, key),
+                label_visibility='collapsed',
+                key='oj_locale_picker',
+            )
+            if locale_key != current_locale:
+                st.session_state['oj_locale'] = locale_key
+                st.rerun()
         with theme_col:
             current_theme = get_theme_key()
             theme_key = st.selectbox(
-                '页面配色',
+                tr('theme_picker', '页面配色'),
                 options=list(THEME_OPTIONS.keys()),
                 index=list(THEME_OPTIONS.keys()).index(current_theme),
-                format_func=lambda key: f'🎨 {THEME_OPTIONS[key]["label"]}',
+                format_func=get_theme_option_label,
                 label_visibility='collapsed',
                 key='oj_theme_picker',
             )
@@ -476,21 +651,21 @@ def render_topbar(page_tag=''):
         with right:
             if user:
                 st.write(f'👤 **{user.get("username", "")}**')
-                st.caption('管理员' if is_admin() else '普通用户')
-                if st.button('退出登录', key='topbar_logout', use_container_width=True):
+                st.caption(tr('admin_role', '管理员') if is_admin() else tr('user_role', '普通用户'))
+                if st.button(tr('logout', '退出登录'), key='topbar_logout', use_container_width=True):
                     api('POST', '/api/auth/logout')
                     st.session_state.pop('oj_me', None)
                     st.session_state.pop(SESSION_COOKIE_NAME, None)
                     st.rerun()
             else:
-                st.caption('当前未登录')
-                if st.button('登录 / 注册', key='topbar_login', type='primary', use_container_width=True):
+                st.caption(tr('not_logged_in', '当前未登录'))
+                if st.button(tr('login_or_register', '登录 / 注册'), key='topbar_login', type='primary', use_container_width=True):
                     login_dialog()
 
 
 @st.cache_data(show_spinner=False)
 def get_build_label():
-    default_label = 'version1.1'
+    default_label = 'v1.2'
     forced_label = str(os.environ.get('OJ_BUILD_LABEL') or '').strip()
     if forced_label:
         return forced_label
@@ -498,7 +673,7 @@ def get_build_label():
 
 
 def render_subheader(breadcrumb_parts, active_route='home'):
-    label_map = ROUTE_LABELS if is_admin() else ROUTE_LABELS_USER
+    label_map = get_route_label_map()
     with st.container():
         st.markdown('<div class="oj-nav-wrap">', unsafe_allow_html=True)
         route_keys = [key for key in ROUTE_ORDER if key in label_map]
@@ -516,12 +691,12 @@ def render_subheader(breadcrumb_parts, active_route='home'):
         for index, (text, _) in enumerate(breadcrumb_parts or []):
             crumbs.append(f'**{text}**' if index == len(breadcrumb_parts) - 1 else f':gray[{text}]')
         if crumbs:
-            st.caption('  ›  '.join(crumbs))
+            st.caption(tr('nav_separator', '  ›  ').join(crumbs))
         st.markdown('</div>', unsafe_allow_html=True)
 
 
 def render_home_button(label='返回首页'):
-    render_page_link(label, page_url('home'))
+    render_page_link(label or tr('return_home', '返回首页'), page_url('home'))
 
 
 def render_page_link(label, url, primary=False):
@@ -537,28 +712,29 @@ def render_page_link(label, url, primary=False):
 def render_sample_cases(samples, heading='公开样例'):
     st.markdown(f'#### {heading}')
     if not samples:
-        st.info('暂无样例数据。')
+        st.info(tr('empty_content', '暂无内容。'))
         return
     for index, sample in enumerate(samples, start=1):
-        st.markdown(f'**样例 {index}**')
+        case_label = f'Case {index}' if get_locale() == 'en-US' else f'样例 {index}'
+        st.markdown(f'**{case_label}**')
         col_in, col_out = st.columns(2, gap='small')
         sample_input = '' if sample is None else html.escape(str(sample.get('input', '') or ''))
         sample_output = '' if sample is None else html.escape(str(sample.get('output', '') or sample.get('expected', '') or ''))
         with col_in:
-            st.markdown('<div class="oj-sample-title">输入样例</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="oj-sample-title">{html.escape(tr("sample_input", "输入样例"))}</div>', unsafe_allow_html=True)
             st.markdown(f'<div class="oj-sample-box"><div class="oj-sample-text">{sample_input or "（空）"}</div></div>', unsafe_allow_html=True)
         with col_out:
-            st.markdown('<div class="oj-sample-title">输出样例</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="oj-sample-title">{html.escape(tr("sample_output", "输出样例"))}</div>', unsafe_allow_html=True)
             st.markdown(f'<div class="oj-sample-box"><div class="oj-sample-text">{sample_output or "（空）"}</div></div>', unsafe_allow_html=True)
         explanation = '' if sample is None else str(sample.get('explanation', '') or '')
         if explanation:
-            st.caption(f'样例说明：{explanation}')
+            st.caption(f'{tr("sample_explanation", "样例说明")}：{explanation}')
 
 
 def render_rich_text(content, empty_text='暂无内容。'):
     text = str(content or '').strip()
     if not text:
-        st.info(empty_text)
+        st.info(empty_text or tr('empty_content', '暂无内容。'))
         return
     parts = re.split(r'(\$\$.*?\$\$)', text, flags=re.S)
     rendered_any = False
@@ -575,7 +751,7 @@ def render_rich_text(content, empty_text='暂无内容。'):
             st.markdown(chunk)
             rendered_any = True
     if not rendered_any:
-        st.info(empty_text)
+        st.info(empty_text or tr('empty_content', '暂无内容。'))
 
 
 def load_all_problems(force=False):
