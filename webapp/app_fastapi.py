@@ -2416,7 +2416,7 @@ def _validate_final_problem_json(j: dict) -> Tuple[bool, str]:
 def _preview_html_from_json(j: dict) -> str:
     tags = ''.join(f'<span class="pl-tag-chip">{t}</span>' for t in (j.get('tags') or []))
     d = (j.get('description') or '').replace('\n','<br>')
-    return f'<h3 style="margin:0 0 8px;color:#1a237e;">{j.get("title","")}</h3><div style="margin-bottom:8px;">{tags}</div><div style="font-size:12.5px;color:#263238;line-height:1.7;">{d}</div>'
+    return f'<h3 style="margin:0 0 8px;color:#111827;">{j.get("title","")}</h3><div style="margin-bottom:8px;">{tags}</div><div style="font-size:12.5px;color:#374151;line-height:1.7;">{d}</div>'
 
 
 def _prefer_generation_model(mc: ModelConfig) -> ModelConfig:

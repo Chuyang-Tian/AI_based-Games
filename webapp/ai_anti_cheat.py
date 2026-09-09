@@ -411,7 +411,11 @@ def evaluate(
 def build_report_html(r: AntiCheatResult, *, submission_id: int, username: str = '',
                       problem_title: str = '') -> str:
     """生成供 admin 审查的 HTML 报告卡片"""
-    level_map = {'high': ('🔴 高风险', '#d32f2f'), 'mid': ('🟡 中风险', '#f9a825'), 'low': ('🟢 低风险', '#2e7d32')}
+    level_map = {
+        'high': ('🔴 高风险', '#374151'),
+        'mid': ('🟡 中风险', '#4b5563'),
+        'low': ('🟢 低风险', '#6b7280'),
+    }
     label, color = level_map.get(r.level, level_map['low'])
     rows = ''
     D = [
@@ -427,34 +431,34 @@ def build_report_html(r: AntiCheatResult, *, submission_id: int, username: str =
         except Exception:
             info_txt = ''
         if score >= 70:
-            bg = '#fdecea'
+            bg = '#f5f5f5'
         elif score >= 40:
-            bg = '#fff8e1'
+            bg = '#f8fafc'
         else:
-            bg = '#e8f5e9'
+            bg = '#f9fafb'
         rows += f'''
         <tr style="background:{bg};">
-          <td style="padding:8px 12px;border:1px solid #eee;"><b>{tag}</b></td>
-          <td style="padding:8px 12px;border:1px solid #eee;">{name}</td>
-          <td style="padding:8px 12px;border:1px solid #eee;font-weight:700;">{score}</td>
-          <td style="padding:8px 12px;border:1px solid #eee;color:#555;font-size:12px;">{info_txt}</td>
+          <td style="padding:8px 12px;border:1px solid #d1d5db;"><b>{tag}</b></td>
+          <td style="padding:8px 12px;border:1px solid #d1d5db;">{name}</td>
+          <td style="padding:8px 12px;border:1px solid #d1d5db;font-weight:700;">{score}</td>
+          <td style="padding:8px 12px;border:1px solid #d1d5db;color:#4b5563;font-size:12px;">{info_txt}</td>
         </tr>'''
     html = f'''
-    <div style="max-width:820px;font-family:system-ui,'Microsoft YaHei',sans-serif;border:1px solid #ddd;border-radius:10px;overflow:hidden;">
+    <div style="max-width:820px;font-family:system-ui,'Microsoft YaHei',sans-serif;border:1px solid #d1d5db;border-radius:10px;overflow:hidden;background:#f9fafb;color:#111827;">
       <div style="background:{color};color:#fff;padding:14px 20px;">
         <div style="font-size:18px;font-weight:700;">🤖 AI 作弊风险审查报告 · Submission #{submission_id}</div>
         <div style="opacity:0.92;margin-top:4px;">用户: <b>{username or '-'}</b> &nbsp;|&nbsp; 题目: <b>{problem_title or '-'}</b> &nbsp;|&nbsp; 综合分: <b>{r.overall}</b> → {label}</div>
       </div>
-      <div style="padding:14px 20px;background:#fafafa;border-bottom:1px solid #eee;font-size:12.5px;color:#666;">
+      <div style="padding:14px 20px;background:#f3f4f6;border-bottom:1px solid #d1d5db;font-size:12.5px;color:#4b5563;">
         加权公式: <code>overall = 0.35·S1 + 0.25·S2 + 0.15·S3 + 0.15·S4 + 0.10·S5</code>；
         ≥70 🔴 高风险，40~69 🟡 中风险，<40 🟢 低风险。本审查仅为管理员提供参考，不自动判定为作弊。
       </div>
-      <table style="width:100%;border-collapse:collapse;background:#fff;">
-        <thead><tr style="background:#f0f4f8;">
-          <th style="padding:10px 12px;text-align:left;border:1px solid #eee;width:60px;">维度</th>
-          <th style="padding:10px 12px;text-align:left;border:1px solid #eee;width:140px;">名称</th>
-          <th style="padding:10px 12px;text-align:left;border:1px solid #eee;width:90px;">得分</th>
-          <th style="padding:10px 12px;text-align:left;border:1px solid #eee;">细节（本地规则计算值）</th>
+      <table style="width:100%;border-collapse:collapse;background:#f9fafb;color:#111827;">
+        <thead><tr style="background:#e5e7eb;">
+          <th style="padding:10px 12px;text-align:left;border:1px solid #d1d5db;width:60px;">维度</th>
+          <th style="padding:10px 12px;text-align:left;border:1px solid #d1d5db;width:140px;">名称</th>
+          <th style="padding:10px 12px;text-align:left;border:1px solid #d1d5db;width:90px;">得分</th>
+          <th style="padding:10px 12px;text-align:left;border:1px solid #d1d5db;">细节（本地规则计算值）</th>
         </tr></thead>
         <tbody>{rows}</tbody>
       </table>

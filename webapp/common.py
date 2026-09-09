@@ -96,6 +96,12 @@ THEME_OPTIONS = {
         'accent_soft': '#fff5f5',
         'accent_border': '#fecaca',
         'accent_text': '#b91c1c',
+        'surface_soft': '#faf7f7',
+        'surface_muted': '#f5f1f1',
+        'surface_border': '#eadede',
+        'surface_hover': '#f2e8e8',
+        'text_soft': '#6b7280',
+        'text_main': '#111827',
     },
     'pink': {
         'label': '粉',
@@ -104,6 +110,12 @@ THEME_OPTIONS = {
         'accent_soft': '#fdf2f8',
         'accent_border': '#f9a8d4',
         'accent_text': '#be185d',
+        'surface_soft': '#fcf7fa',
+        'surface_muted': '#f9f1f5',
+        'surface_border': '#eed9e3',
+        'surface_hover': '#f5e8ef',
+        'text_soft': '#6b7280',
+        'text_main': '#111827',
     },
     'blue': {
         'label': '蓝',
@@ -112,6 +124,12 @@ THEME_OPTIONS = {
         'accent_soft': '#eff6ff',
         'accent_border': '#93c5fd',
         'accent_text': '#1d4ed8',
+        'surface_soft': '#f6f7f9',
+        'surface_muted': '#eff1f5',
+        'surface_border': '#d7dce5',
+        'surface_hover': '#e9edf3',
+        'text_soft': '#6b7280',
+        'text_main': '#111827',
     },
     'black': {
         'label': '黑',
@@ -120,6 +138,12 @@ THEME_OPTIONS = {
         'accent_soft': '#f3f4f6',
         'accent_border': '#d1d5db',
         'accent_text': '#111827',
+        'surface_soft': '#f3f4f6',
+        'surface_muted': '#e5e7eb',
+        'surface_border': '#d1d5db',
+        'surface_hover': '#e5e7eb',
+        'text_soft': '#4b5563',
+        'text_main': '#111827',
     },
 }
 
@@ -131,7 +155,7 @@ LOCALE_OPTIONS = {
 I18N = {
     'en-US': {
         'platform_title': '💻 OJ Debug Platform',
-        'build_version': 'version1.1',
+        'build_version': 'v1.1.2',
         'theme_picker': 'Theme',
         'locale_picker': 'Language',
         'logout': 'Log Out',
@@ -233,6 +257,45 @@ def get_theme_palette():
     return THEME_OPTIONS[get_theme_key()]
 
 
+def _current_query_params_dict():
+    params = {}
+    try:
+        for key in list(st.query_params.keys()):
+            value = st.query_params.get(key)
+            if isinstance(value, (list, tuple)):
+                params[str(key)] = str(value[0]) if value else ''
+            elif value is not None:
+                params[str(key)] = str(value)
+    except Exception:
+        pass
+    return params
+
+
+def _replace_query_params(params: dict):
+    try:
+        for key in list(st.query_params.keys()):
+            del st.query_params[key]
+        for key, value in params.items():
+            if value is None or value == '':
+                continue
+            st.query_params[str(key)] = str(value)
+    except Exception:
+        pass
+
+
+def get_query_param(*names, default=''):
+    for name in names:
+        try:
+            value = st.query_params.get(name)
+        except Exception:
+            value = None
+        if isinstance(value, (list, tuple)):
+            value = value[0] if value else ''
+        if value not in (None, ''):
+            return str(value)
+    return default
+
+
 def build_minimal_css():
     theme = get_theme_palette()
     return (
@@ -243,6 +306,12 @@ def build_minimal_css():
         f"  --oj-accent-soft: {theme['accent_soft']};\n"
         f"  --oj-accent-border: {theme['accent_border']};\n"
         f"  --oj-accent-text: {theme['accent_text']};\n"
+        f"  --oj-surface-soft: {theme['surface_soft']};\n"
+        f"  --oj-surface-muted: {theme['surface_muted']};\n"
+        f"  --oj-surface-border: {theme['surface_border']};\n"
+        f"  --oj-surface-hover: {theme['surface_hover']};\n"
+        f"  --oj-text-soft: {theme['text_soft']};\n"
+        f"  --oj-text-main: {theme['text_main']};\n"
         f" }}\n"
         """
  html, body, #root, [data-testid="stApp"] {
@@ -355,9 +424,9 @@ div[data-testid="stVerticalBlock"] {
   margin: 0 0.35rem 0.35rem 0;
   padding: 0.15rem 0.65rem;
   border-radius: 999px;
-  background: #f5f5f5;
-  border: 1px solid #e5e7eb;
-  color: #374151;
+  background: var(--oj-surface-muted);
+  border: 1px solid var(--oj-surface-border);
+  color: var(--oj-text-main);
   font-size: 0.78rem;
   line-height: 1.35;
   white-space: nowrap;
@@ -368,49 +437,49 @@ div[data-testid="stVerticalBlock"] {
   color: var(--oj-accent-text);
 }
 .oj-diff-easy {
-  background: #ecfdf5;
-  border-color: #bbf7d0;
-  color: #15803d;
+  background: var(--oj-surface-soft);
+  border-color: var(--oj-surface-border);
+  color: var(--oj-text-main);
 }
 .oj-diff-medium {
-  background: #fffbeb;
-  border-color: #fde68a;
-  color: #b45309;
+  background: var(--oj-surface-soft);
+  border-color: var(--oj-surface-border);
+  color: var(--oj-text-main);
 }
 .oj-diff-hard {
-  background: #fef2f2;
-  border-color: #fecaca;
-  color: #b91c1c;
+  background: var(--oj-surface-soft);
+  border-color: var(--oj-surface-border);
+  color: var(--oj-text-main);
 }
 .oj-nav-wrap {
   padding: 0.2rem 0 0.35rem 0;
 }
 .oj-sample-box {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--oj-surface-border);
   border-radius: 12px;
   padding: 0.75rem 0.9rem;
-  background: #fafafa;
+  background: var(--oj-surface-soft);
   margin-bottom: 0.75rem;
 }
 .oj-sample-title {
   font-size: 0.82rem;
-  color: #6b7280;
+  color: var(--oj-text-soft);
   margin-bottom: 0.3rem;
 }
 .oj-sample-text {
   white-space: pre-wrap;
   word-break: break-word;
   font-size: 0.95rem;
-  color: #111827;
+  color: var(--oj-text-main);
 }
 .oj-link-btn {
   display: block;
   width: 100%;
   box-sizing: border-box;
   border-radius: 0.75rem;
-  border: 1px solid #d1d5db;
-  background: #ffffff;
-  color: #111827 !important;
+  border: 1px solid var(--oj-surface-border);
+  background: var(--oj-surface-soft);
+  color: var(--oj-text-main) !important;
   text-align: center;
   text-decoration: none !important;
   font-weight: 600;
@@ -419,8 +488,8 @@ div[data-testid="stVerticalBlock"] {
   transition: all 0.15s ease;
 }
 .oj-link-btn:hover {
-  border-color: #9ca3af;
-  background: #f9fafb;
+  border-color: var(--oj-accent-border);
+  background: var(--oj-surface-hover);
 }
 .oj-link-btn-primary {
   background: linear-gradient(135deg, var(--oj-accent-1) 0%, var(--oj-accent-2) 100%);
@@ -450,9 +519,73 @@ div[data-testid="stFormSubmitButton"] > button:hover {
 }
 .stButton > button[kind="secondary"],
 div[data-testid="stFormSubmitButton"] > button[kind="secondary"] {
-  background: #ffffff !important;
-  color: var(--oj-accent-text) !important;
-  border: 1px solid var(--oj-accent-border) !important;
+  background: var(--oj-surface-soft) !important;
+  color: var(--oj-text-main) !important;
+  border: 1px solid var(--oj-surface-border) !important;
+}
+div[data-testid="stMetric"] {
+  background: var(--oj-surface-soft);
+  border: 1px solid var(--oj-surface-border);
+  border-radius: 14px;
+  padding: 0.5rem 0.75rem;
+}
+div[data-testid="stAlert"] {
+  border-radius: 14px !important;
+  background: var(--oj-surface-soft) !important;
+  border: 1px solid var(--oj-surface-border) !important;
+  color: var(--oj-text-main) !important;
+}
+div[data-testid="stAlert"] * {
+  color: var(--oj-text-main) !important;
+}
+div[data-testid="stDataFrame"] [role="grid"],
+div[data-testid="stDataFrame"] [role="table"],
+div[data-testid="stDataFrame"] [data-testid="stDataFrameResizable"] {
+  background: var(--oj-surface-soft) !important;
+  color: var(--oj-text-main) !important;
+}
+div[data-testid="stDataFrame"] [role="columnheader"],
+div[data-testid="stDataFrame"] [role="rowheader"] {
+  background: var(--oj-surface-muted) !important;
+  color: var(--oj-text-main) !important;
+}
+div[data-testid="stDataFrame"] [role="gridcell"],
+div[data-testid="stDataFrame"] [role="cell"],
+div[data-testid="stDataFrame"] [role="row"] {
+  background: var(--oj-surface-soft) !important;
+  color: var(--oj-text-main) !important;
+  border-color: var(--oj-surface-border) !important;
+}
+div[data-testid="stCodeBlock"],
+div[data-testid="stCode"] pre,
+div[data-testid="stJson"] pre,
+div[data-testid="stJson"] code,
+pre {
+  background: var(--oj-surface-soft) !important;
+  color: var(--oj-text-main) !important;
+  border-color: var(--oj-surface-border) !important;
+}
+table {
+  background: var(--oj-surface-soft) !important;
+  color: var(--oj-text-main) !important;
+}
+thead tr,
+thead th {
+  background: var(--oj-surface-muted) !important;
+  color: var(--oj-text-main) !important;
+}
+tbody tr,
+tbody td {
+  background: var(--oj-surface-soft) !important;
+  color: var(--oj-text-main) !important;
+  border-color: var(--oj-surface-border) !important;
+}
+div[data-testid="stMarkdownContainer"] blockquote,
+div[data-testid="stMarkdownContainer"] pre,
+div[data-testid="stMarkdownContainer"] code {
+  background: var(--oj-surface-soft) !important;
+  color: var(--oj-text-main) !important;
+  border-color: var(--oj-surface-border) !important;
 }
 button[data-baseweb="tab"] {
   border-radius: 999px !important;
@@ -465,6 +598,12 @@ div[data-baseweb="select"] > div,
 div[data-baseweb="input"] > div,
 textarea {
   border-color: var(--oj-accent-border) !important;
+}
+div[data-testid="stVerticalBlock"] div[data-baseweb="select"] > div,
+div[data-testid="stVerticalBlock"] div[data-baseweb="input"] > div,
+div[data-testid="stTextArea"] textarea {
+  background: var(--oj-surface-soft) !important;
+  color: var(--oj-text-main) !important;
 }
 input:focus, textarea:focus,
 div[data-baseweb="select"] *:focus,
@@ -556,11 +695,22 @@ def clear_problem_cache():
 def page_url(route_key, **query_kwargs):
     slug = ROUTE_TO_SLUG.get(route_key, '')
     base = '/' if not slug else f'/{url_quote(slug)}'
-    params = {}
+    params = _current_query_params_dict()
+    params['theme'] = get_theme_key()
+    params['locale'] = get_locale()
+    route_identity_keys = {'id', 'assignment_id', 'exam_id', 'class_id', 'submission_id'}
+    if route_key in {'home', 'classes', 'assignments', 'exams', 'problems', 'submissions', 'users', 'ai', 'ai_config'}:
+        for key in route_identity_keys:
+            params.pop(key, None)
     for key, value in query_kwargs.items():
         if value is None or value == '':
             continue
         params[str(key)] = str(value)
+    if route_key == 'submission_detail':
+        sid = params.get('id') or params.get('submission_id')
+        if sid:
+            params['id'] = str(sid)
+            params['submission_id'] = str(sid)
     if not params:
         return base
     return f'{base}?{urlencode(params)}'
@@ -570,11 +720,24 @@ def goto(route_key, **query_kwargs):
     page_rel = ROUTE.get(route_key)
     if not page_rel:
         return
-    params = {}
+    params = _current_query_params_dict()
+    params['theme'] = get_theme_key()
+    params['locale'] = get_locale()
+    route_identity_keys = {'id', 'assignment_id', 'exam_id', 'class_id', 'submission_id'}
+    if route_key in {'home', 'classes', 'assignments', 'exams', 'problems', 'submissions', 'users', 'ai', 'ai_config'}:
+        for key in route_identity_keys:
+            params.pop(key, None)
     for key, value in query_kwargs.items():
         if value is None:
             continue
         params[str(key)] = str(value)
+    if route_key == 'submission_detail':
+        sid = params.get('id') or params.get('submission_id')
+        if sid:
+            sid = str(sid)
+            params['id'] = sid
+            params['submission_id'] = sid
+            st.session_state['last_submission_id'] = sid
     st.session_state['pending_goto'] = (page_rel, params)
     st.rerun()
 
@@ -634,6 +797,10 @@ def render_topbar(page_tag=''):
             )
             if locale_key != current_locale:
                 st.session_state['oj_locale'] = locale_key
+                params = _current_query_params_dict()
+                params['locale'] = locale_key
+                params['theme'] = get_theme_key()
+                _replace_query_params(params)
                 st.rerun()
         with theme_col:
             current_theme = get_theme_key()
@@ -647,6 +814,10 @@ def render_topbar(page_tag=''):
             )
             if theme_key != current_theme:
                 st.session_state['oj_theme'] = theme_key
+                params = _current_query_params_dict()
+                params['theme'] = theme_key
+                params['locale'] = get_locale()
+                _replace_query_params(params)
                 st.rerun()
         with right:
             if user:
@@ -665,7 +836,7 @@ def render_topbar(page_tag=''):
 
 @st.cache_data(show_spinner=False)
 def get_build_label():
-    default_label = 'v1.2'
+    default_label = 'v1.1.2'
     forced_label = str(os.environ.get('OJ_BUILD_LABEL') or '').strip()
     if forced_label:
         return forced_label
@@ -679,8 +850,7 @@ def render_subheader(breadcrumb_parts, active_route='home'):
         route_keys = [key for key in ROUTE_ORDER if key in label_map]
         nav_cols = st.columns(len(route_keys))
         for index, route_key in enumerate(route_keys):
-            slug = ROUTE_TO_SLUG.get(route_key, '')
-            target = '/' if not slug else f'/{url_quote(slug)}'
+            target = page_url(route_key)
             with nav_cols[index]:
                 render_page_link(
                     label_map[route_key],
@@ -812,6 +982,35 @@ def get_filtered_problems(problems, keyword='', difficulty='', active_tags=None)
 
 
 def ensure_init():
+    try:
+        qp_theme = st.query_params.get('theme')
+        qp_locale = st.query_params.get('locale')
+        if isinstance(qp_theme, (list, tuple)):
+            qp_theme = qp_theme[0] if qp_theme else None
+        if isinstance(qp_locale, (list, tuple)):
+            qp_locale = qp_locale[0] if qp_locale else None
+        if qp_theme in THEME_OPTIONS:
+            st.session_state['oj_theme'] = qp_theme
+        elif st.session_state.get('oj_theme') in THEME_OPTIONS:
+            params = _current_query_params_dict()
+            params['theme'] = st.session_state['oj_theme']
+            _replace_query_params(params)
+        else:
+            params = _current_query_params_dict()
+            params['theme'] = get_theme_key()
+            _replace_query_params(params)
+        if qp_locale in LOCALE_OPTIONS:
+            st.session_state['oj_locale'] = qp_locale
+        elif st.session_state.get('oj_locale') in LOCALE_OPTIONS:
+            params = _current_query_params_dict()
+            params['locale'] = st.session_state['oj_locale']
+            _replace_query_params(params)
+        else:
+            params = _current_query_params_dict()
+            params['locale'] = get_locale()
+            _replace_query_params(params)
+    except Exception:
+        pass
     st.markdown(build_minimal_css(), unsafe_allow_html=True)
     pending = st.session_state.pop('pending_goto', None)
     if pending:

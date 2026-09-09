@@ -14,6 +14,7 @@ from common import (
     current_user,
     ensure_init,
     get_locale,
+    get_query_param,
     render_home_button,
     render_subheader,
     render_topbar,
@@ -35,13 +36,14 @@ if not user:
     require_login_error()
     st.stop()
 
-raw_sid = st.query_params.get('id') or ''
-sid = str(raw_sid[0] if isinstance(raw_sid, list) else raw_sid)
+sid = get_query_param('id', 'submission_id', default='') or str(st.session_state.get('last_submission_id') or '')
+if sid:
+    st.session_state['last_submission_id'] = sid
 
 render_subheader([(t('🏠 判题首页', '🏠 Home'), 'home'), (t('📋 提交日志', '📋 Submissions'), 'submissions'), (t(f'🧾 提交 {sid or ""}', f'🧾 Submission {sid or ""}'), None)], 'submissions')
 
 if not sid:
-    st.warning(t('缺少提交 ID。', 'Missing submission ID.'))
+    st.warning(t('缺少提交 ID。请从判题页重新提交，或从提交日志进入详情页。', 'Missing submission ID. Please resubmit from the judge page or open it from the submissions list.'))
     render_home_button()
     st.stop()
 

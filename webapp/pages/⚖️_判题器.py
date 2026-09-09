@@ -122,13 +122,18 @@ if not gs('inited'):
         default_lang = lang_names[0]
     ss_set('inited', True)
     ss_set('lang', default_lang)
+    ss_set('lang_widget', default_lang)
     ss_set('code', '')
     ss_set('tl', float(problem.get('time_limit') or 1.0))
+    ss_set('tl_widget', float(problem.get('time_limit') or 1.0))
     ss_set('ml', int(problem.get('memory_limit') or 128))
+    ss_set('ml_widget', int(problem.get('memory_limit') or 128))
     ss_set('cm', problem.get('compare_mode') or 'exact')
+    ss_set('cm_widget', problem.get('compare_mode') or 'exact')
     ss_set('samples', True)
     ss_set('custom', False)
     ss_set('custom_list', [])
+    ss_set('run_modes_widget', [t('评测', 'Judge')])
 elif is_legacy_starter(gs('code', '')):
     ss_set('code', '')
 
@@ -198,10 +203,11 @@ with st.container(border=True):
             t('语言', 'Language'),
             lang_names,
             index=lang_names.index(cur_lang),
-            key=pk + 'lang',
+            key=pk + 'lang_widget',
         )
         if new_lang != cur_lang:
             ss_set('lang', new_lang)
+            ss_set('lang_widget', new_lang)
             st.rerun()
     with row2:
         compare_modes = ['exact', 'trim', 'numeric']
@@ -215,7 +221,7 @@ with st.container(border=True):
             t('对比方式', 'Compare Mode'),
             [compare_labels[item] for item in compare_modes],
             index=compare_modes.index(cur_cm if cur_cm in compare_modes else 'exact'),
-            key=pk + 'cm',
+            key=pk + 'cm_widget',
         )
         ss_set('cm', compare_modes[[compare_labels[item] for item in compare_modes].index(new_cm_label)])
     with row3:
@@ -225,7 +231,7 @@ with st.container(border=True):
             max_value=60.0,
             step=0.1,
             value=float(gs('tl') or 1.0),
-            key=pk + 'tl',
+            key=pk + 'tl_widget',
         )
     with row4:
         ml_val = st.number_input(
@@ -234,7 +240,7 @@ with st.container(border=True):
             max_value=2048,
             step=8,
             value=int(gs('ml') or 128),
-            key=pk + 'ml',
+            key=pk + 'ml_widget',
         )
 
     cur_code = st.text_area(
@@ -260,7 +266,7 @@ with st.container(border=True):
         t('本次运行方式', 'Run Mode'),
         [judge_mode_label, custom_mode_label],
         default=default_modes or [judge_mode_label],
-        key=pk + 'run_modes',
+        key=pk + 'run_modes_widget',
         help=t(
             '评测：运行题目公开样例。自定义调试：运行你手动填写的样例。',
             'Judge: run official public samples. Custom Debug: run your own cases.'
@@ -379,6 +385,7 @@ with st.container(border=True):
             if not sid:
                 st.error(t('后端未返回 submission_id。', 'Backend did not return submission_id.'))
             else:
+                st.session_state['last_submission_id'] = str(sid)
                 goto('submission_detail', id=sid)
         else:
             st.error(t(
