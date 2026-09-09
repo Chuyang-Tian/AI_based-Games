@@ -19,6 +19,7 @@ from common import (
     render_page_link,
     render_home_button,
     render_sample_cases,
+    render_rich_text,
     render_subheader,
     render_topbar,
     require_login_error,
@@ -76,13 +77,13 @@ else:
 
     with tabs[0]:
         st.markdown('#### 题目描述')
-        st.write(problem.get('description') or '暂无描述')
+        render_rich_text(problem.get('description'), '暂无描述')
         st.markdown('#### 输入描述')
-        st.write(problem.get('input_description') or '暂无输入描述')
+        render_rich_text(problem.get('input_description'), '暂无输入描述')
         st.markdown('#### 输出描述')
-        st.write(problem.get('output_description') or '暂无输出描述')
+        render_rich_text(problem.get('output_description'), '暂无输出描述')
         st.markdown('#### 数据范围与提示')
-        st.write((problem.get('constraints') or '') + ('\n\n' + problem.get('hint') if problem.get('hint') else ''))
+        render_rich_text((problem.get('constraints') or '') + ('\n\n' + problem.get('hint') if problem.get('hint') else ''), '暂无数据范围与提示')
         if problem.get('tags'):
             st.caption('标签：' + ', '.join(problem.get('tags') or []))
 

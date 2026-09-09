@@ -40,6 +40,25 @@ config = config_data.get('data') if isinstance(config_data, dict) else {}
 stats_code, stats_data, _ = api('GET', '/api/ai/stats_summary')
 stats = stats_data.get('data') if isinstance(stats_data, dict) else {}
 
+deepseek_defaults = {
+    'provider': 'deepseek',
+    'base_url': 'https://api.deepseek.com/v1',
+    'model_name': 'deepseek-chat',
+}
+is_unconfigured_openai_default = (
+    not config.get('configured')
+    and str(config.get('provider') or 'openai').lower() == 'openai'
+    and str(config.get('base_url') or 'https://api.openai.com/v1').rstrip('/') == 'https://api.openai.com/v1'
+    and str(config.get('model_name') or 'gpt-4o-mini') == 'gpt-4o-mini'
+)
+provider_default = str(config.get('provider') or '').strip() or deepseek_defaults['provider']
+base_url_default = str(config.get('base_url') or '').strip() or deepseek_defaults['base_url']
+model_default = str(config.get('model_name') or '').strip() or deepseek_defaults['model_name']
+if is_unconfigured_openai_default:
+    provider_default = deepseek_defaults['provider']
+    base_url_default = deepseek_defaults['base_url']
+    model_default = deepseek_defaults['model_name']
+
 with st.container(border=True):
     st.subheader('当前配置状态', divider=False)
     cols = st.columns(4)
@@ -52,13 +71,16 @@ with st.container(border=True):
 
 with st.container(border=True):
     st.subheader('保存模型配置', divider=False)
+    st.info('默认已切换为 DeepSeek。若你没有特殊需求，直接填写 DeepSeek API Key 并保存即可。')
+    st.caption('DeepSeek 推荐参数：Provider=`deepseek`，Base URL=`https://api.deepseek.com/v1`，Model 推荐 `deepseek-chat`；需要推理模型时可改成 `deepseek-reasoner`。')
+    st.caption('密钥获取位置：DeepSeek 开放平台 https://platform.deepseek.com/ ，登录后进入 API Keys 页面创建即可。')
     with st.form('ai_config_form'):
         c1, c2 = st.columns(2)
         with c1:
-            provider = st.text_input('Provider', value=str(config.get('provider') or 'openai'))
-            base_url = st.text_input('Base URL', value=str(config.get('base_url') or 'https://api.openai.com/v1'))
-            model_name = st.text_input('Model Name', value=str(config.get('model_name') or 'gpt-4o-mini'))
-            api_key = st.text_input('API Key', type='password', value='')
+            provider = st.text_input('Provider', value=provider_default)
+            base_url = st.text_input('Base URL', value=base_url_default)
+            model_name = st.text_input('Model Name', value=model_default)
+            api_key = st.text_input('API Key', type='password', value='', help='DeepSeek 密钥在 platform.deepseek.com 的 API Keys 页面创建。')
         with c2:
             input_price = st.number_input('输入单价 / 1k tokens', min_value=0.0, step=0.0001, value=float(config.get('price_input_per_1k') or 0.0))
             output_price = st.number_input('输出单价 / 1k tokens', min_value=0.0, step=0.0001, value=float(config.get('price_output_per_1k') or 0.0))

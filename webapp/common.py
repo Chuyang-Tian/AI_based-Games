@@ -3,6 +3,7 @@
 
 import html
 import os
+import re
 from urllib.parse import urlencode
 from urllib.parse import quote as url_quote
 
@@ -65,8 +66,63 @@ ROUTE_TO_SLUG = {
     'ai_config': 'AI配置',
 }
 
-MINIMAL_CSS = """
-<style>
+THEME_OPTIONS = {
+    'red': {
+        'label': '红',
+        'accent_1': '#c62828',
+        'accent_2': '#8e0000',
+        'accent_soft': '#fff5f5',
+        'accent_border': '#fecaca',
+        'accent_text': '#b91c1c',
+    },
+    'pink': {
+        'label': '粉',
+        'accent_1': '#d81b60',
+        'accent_2': '#ad1457',
+        'accent_soft': '#fdf2f8',
+        'accent_border': '#f9a8d4',
+        'accent_text': '#be185d',
+    },
+    'blue': {
+        'label': '蓝',
+        'accent_1': '#2563eb',
+        'accent_2': '#1d4ed8',
+        'accent_soft': '#eff6ff',
+        'accent_border': '#93c5fd',
+        'accent_text': '#1d4ed8',
+    },
+    'black': {
+        'label': '黑',
+        'accent_1': '#374151',
+        'accent_2': '#111827',
+        'accent_soft': '#f3f4f6',
+        'accent_border': '#d1d5db',
+        'accent_text': '#111827',
+    },
+}
+
+
+def get_theme_key():
+    key = st.session_state.get('oj_theme', 'red')
+    return key if key in THEME_OPTIONS else 'red'
+
+
+def get_theme_palette():
+    return THEME_OPTIONS[get_theme_key()]
+
+
+def build_minimal_css():
+    theme = get_theme_palette()
+    return (
+        "<style>\n"
+        f" :root {{\n"
+        f"  --oj-accent-1: {theme['accent_1']};\n"
+        f"  --oj-accent-2: {theme['accent_2']};\n"
+        f"  --oj-accent-soft: {theme['accent_soft']};\n"
+        f"  --oj-accent-border: {theme['accent_border']};\n"
+        f"  --oj-accent-text: {theme['accent_text']};\n"
+        f" }}\n"
+        """
  html, body, #root, [data-testid="stApp"] {
   height: auto !important;
   min-height: 100vh !important;
@@ -159,7 +215,7 @@ div.block-container > div {
 }
 div[data-testid="stAppViewContainer"]::before{
   content:""; display:block; height:6px; width:100%;
-  background:linear-gradient(135deg,#c62828 0%,#8e0000 100%);
+  background:linear-gradient(135deg,var(--oj-accent-1) 0%,var(--oj-accent-2) 100%);
   border-radius:0 0 8px 8px;
 }
 .oj-nav-wrap,
@@ -185,9 +241,9 @@ div[data-testid="stVerticalBlock"] {
   white-space: nowrap;
 }
 .oj-pill.oj-pill-active {
-  background: #fff5f5;
-  border-color: #fecaca;
-  color: #b91c1c;
+  background: var(--oj-accent-soft);
+  border-color: var(--oj-accent-border);
+  color: var(--oj-accent-text);
 }
 .oj-diff-easy {
   background: #ecfdf5;
@@ -245,16 +301,17 @@ div[data-testid="stVerticalBlock"] {
   background: #f9fafb;
 }
 .oj-link-btn-primary {
-  background: linear-gradient(135deg, #c62828 0%, #8e0000 100%);
-  border-color: #8e0000;
+  background: linear-gradient(135deg, var(--oj-accent-1) 0%, var(--oj-accent-2) 100%);
+  border-color: var(--oj-accent-2);
   color: #ffffff !important;
 }
 .oj-link-btn-primary:hover {
-  background: linear-gradient(135deg, #b71c1c 0%, #7f0000 100%);
-  border-color: #7f0000;
+  background: linear-gradient(135deg, var(--oj-accent-2) 0%, var(--oj-accent-2) 100%);
+  border-color: var(--oj-accent-2);
 }
 </style>
 """
+    )
 
 
 def api(method, path, json_body=None, params=None, timeout=60):
@@ -395,12 +452,25 @@ def login_dialog():
 def render_topbar(page_tag=''):
     user = current_user()
     with st.container(border=True):
-        left, middle, right = st.columns([4, 4, 4])
+        left, middle, theme_col, right = st.columns([4, 3, 2, 3])
         with left:
             st.subheader('💻 OJ 调试平台', divider=False)
         with middle:
             if page_tag:
                 st.caption(f'📌 {page_tag}')
+        with theme_col:
+            current_theme = get_theme_key()
+            theme_key = st.selectbox(
+                '页面配色',
+                options=list(THEME_OPTIONS.keys()),
+                index=list(THEME_OPTIONS.keys()).index(current_theme),
+                format_func=lambda key: f'🎨 {THEME_OPTIONS[key]["label"]}',
+                label_visibility='collapsed',
+                key='oj_theme_picker',
+            )
+            if theme_key != current_theme:
+                st.session_state['oj_theme'] = theme_key
+                st.rerun()
         with right:
             if user:
                 st.write(f'👤 **{user.get("username", "")}**')
@@ -474,6 +544,29 @@ def render_sample_cases(samples, heading='公开样例'):
             st.caption(f'样例说明：{explanation}')
 
 
+def render_rich_text(content, empty_text='暂无内容。'):
+    text = str(content or '').strip()
+    if not text:
+        st.info(empty_text)
+        return
+    parts = re.split(r'(\$\$.*?\$\$)', text, flags=re.S)
+    rendered_any = False
+    for part in parts:
+        if not part or not part.strip():
+            continue
+        chunk = part.strip()
+        if chunk.startswith('$$') and chunk.endswith('$$'):
+            formula = chunk[2:-2].strip()
+            if formula:
+                st.latex(formula)
+                rendered_any = True
+        else:
+            st.markdown(chunk)
+            rendered_any = True
+    if not rendered_any:
+        st.info(empty_text)
+
+
 def load_all_problems(force=False):
     if not force and st.session_state.get('_all_problems') is not None:
         return st.session_state['_all_problems']
@@ -532,7 +625,7 @@ def get_filtered_problems(problems, keyword='', difficulty='', active_tags=None)
 
 
 def ensure_init():
-    st.markdown(MINIMAL_CSS, unsafe_allow_html=True)
+    st.markdown(build_minimal_css(), unsafe_allow_html=True)
     pending = st.session_state.pop('pending_goto', None)
     if pending:
         page_path, params = pending

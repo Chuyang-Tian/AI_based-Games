@@ -12,7 +12,7 @@ st.set_page_config(page_title='判题器 · OJ', page_icon='⚖️', layout='wid
 from common import (
     ensure_init, render_topbar, render_subheader,
     current_user, require_login_error, is_admin,
-    load_all_problems, load_languages, api, page_url, render_home_button, render_page_link, render_sample_cases, toast_safe,
+    load_all_problems, load_languages, api, page_url, render_home_button, render_page_link, render_rich_text, render_sample_cases, toast_safe,
 )
 
 LANG_DEFAULT_CODE = {
@@ -101,8 +101,7 @@ if problem and not gs('inited'):
     ss_set('ml', int(problem.get('memory_limit') or 128))
     ss_set('cm', problem.get('compare_mode') or 'exact')
     ss_set('samples', True)
-    ss_set('custom', True)
-    ss_set('only_custom', False)
+    ss_set('custom', False)
     ss_set('custom_list', [])
     ss_set('last', None)
 
@@ -141,20 +140,20 @@ with header_card:
 
     if problem.get('description'):
         st.markdown('#### 📝 题目描述')
-        st.info(problem['description'])
+        render_rich_text(problem['description'])
     if problem.get('input_description'):
         st.markdown('#### 📥 输入描述')
-        st.info(problem['input_description'])
+        render_rich_text(problem['input_description'])
     if problem.get('output_description'):
         st.markdown('#### 🎯 输出描述')
-        st.info(problem['output_description'])
+        render_rich_text(problem['output_description'])
     if problem.get('constraints') or problem.get('hint'):
         extra = (problem.get('constraints') or '')
         if problem.get('hint'):
             extra += ('\n\n💡 ' + problem['hint'])
         if extra.strip():
             st.markdown('#### ⚙️ 数据范围与提示')
-            st.warning(extra)
+            render_rich_text(extra)
 
 # ============ 下方主网格两列 ============
 col_left, col_right = st.columns(2, gap='large')
@@ -218,28 +217,45 @@ with col_right:
     case_card = st.container(border=True)
     with case_card:
         st.subheader('📊 测试用例', divider=False)
+        default_modes = []
+        if gs('samples', True):
+            default_modes.append('评测')
+        if gs('custom', False):
+            default_modes.append('自定义调试')
+        selected_modes = st.multiselect(
+            '本次运行方式',
+            ['评测', '自定义调试'],
+            default=default_modes or ['评测'],
+            help='可同时选择两项；只选“评测”表示仅跑题目样例，只选“自定义调试”表示只跑你手动填写的样例。',
+            key=pk + 'w_run_modes',
+        )
+        use_s = '评测' in selected_modes
+        use_c = '自定义调试' in selected_modes
+        only_c = use_c and not use_s
+        ss_set('samples', use_s)
+        ss_set('custom', use_c)
         t1, t2 = st.tabs(['📋 一、公开样例（题目提供）', '🔥 二、自定义调试样例'])
         samples = problem.get('samples') or []
         with t1:
-            use_s = st.checkbox('使用「公开样例」参与评测', value=gs('samples'), key=pk+'w_samples')
             if not samples:
                 st.caption('（该题目暂未设置公开样例）')
             elif use_s:
                 render_sample_cases(samples, '公开样例')
+            else:
+                st.caption('当前未勾选“评测”，本次提交不会包含公开样例。')
 
         with t2:
-            c_check1, c_check2, c_btn = st.columns([3, 4, 2])
-            with c_check1:
-                use_c = st.checkbox('使用自定义调试样例', value=gs('custom'), key=pk+'w_custom')
-            with c_check2:
-                only_c = st.checkbox('仅评测自定义样例', value=gs('only_custom'), key=pk+'w_only_custom')
+            c_hint, c_btn = st.columns([7, 2])
+            with c_hint:
+                st.caption('这里填写的是你自己的输入/期望输出，仅当前页面生效，适合快速调试。')
             with c_btn:
                 if st.button('＋ 新增一组', use_container_width=True, type='primary', key=pk+'w_add_custom'):
                     lst = list(gs('custom_list') or [])
                     lst.append({'input':'', 'output':''})
                     ss_set('custom_list', lst)
                     st.rerun()
-            st.caption('⚠️ 自定义样例期望由你自己填写，系统按你写的对比，方便调试。')
+            if not use_c:
+                st.caption('当前未勾选“自定义调试”，下面填写的样例不会参与本次提交。')
 
             n_s = len(samples) if use_s else 0
             n_c = len(gs('custom_list') or []) if use_c else 0
@@ -306,6 +322,16 @@ with col_right:
                     ss_set('last', last)
 
         if submit:
+            custom_payload_cases = [
+                {'input': c.get('input', ''), 'expected': c.get('output', '')}
+                for c in c_list if (c.get('input') or c.get('output'))
+            ]
+            if not use_s and not use_c:
+                st.warning('请至少选择一种运行方式：评测 或 自定义调试。')
+                st.stop()
+            if use_c and not custom_payload_cases:
+                st.warning('你已选择“自定义调试”，但还没有填写任何自定义样例。')
+                st.stop()
             with st.spinner('⏳ 正在判题…'):
                 payload = {
                     'problem_id': p_id,
@@ -324,11 +350,8 @@ with col_right:
                         {'input': s.get('input',''), 'expected': s.get('output','')}
                         for s in samples
                     ]
-                if use_c and c_list:
-                    payload['custom_cases'] = [
-                        {'input': c.get('input',''), 'expected': c.get('output','')}
-                        for c in c_list if (c.get('input') or c.get('output'))
-                    ]
+                if use_c and custom_payload_cases:
+                    payload['custom_cases'] = custom_payload_cases
                 if only_c:
                     payload['only_custom_cases'] = True
                 c, d, err = api('POST', '/api/submissions/', payload)

@@ -76,14 +76,35 @@ MOCK_PROBLEM_JSON = {
         "    print(' '.join(res))\n"
         "main()\n"
     ),
+    "solution_cpp": (
+        "#include <bits/stdc++.h>\n"
+        "using namespace std;\n"
+        "int main(){\n"
+        "    ios::sync_with_stdio(false);\n"
+        "    cin.tie(nullptr);\n"
+        "    int n; \n"
+        "    if(!(cin >> n)) return 0;\n"
+        "    vector<long long> a(n);\n"
+        "    for (auto &x : a) cin >> x;\n"
+        "    sort(a.begin(), a.end());\n"
+        "    a.erase(unique(a.begin(), a.end()), a.end());\n"
+        "    cout << a.size() << \"\\n\";\n"
+        "    for (int i = 0; i < (int)a.size(); ++i) {\n"
+        "        if (i) cout << ' ';\n"
+        "        cout << a[i];\n"
+        "    }\n"
+        "    cout << \"\\n\";\n"
+        "    return 0;\n"
+        "}\n"
+    ),
 }
 
 
 @dataclass
 class ModelConfig:
-    provider: str = 'openai'
-    base_url: str = 'https://api.openai.com/v1'
-    model_name: str = 'gpt-4o-mini'
+    provider: str = 'deepseek'
+    base_url: str = 'https://api.deepseek.com/v1'
+    model_name: str = 'deepseek-chat'
     api_key_plain: str = ''
     price_input_per_1k: float = 0.00015
     price_output_per_1k: float = 0.0006

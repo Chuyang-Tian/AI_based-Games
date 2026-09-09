@@ -20,12 +20,11 @@ def fetch_list(path):
     return []
 
 
-def render_preview_card(title, caption, items, empty_text, route_key, kind):
+def render_preview_card(title, items, empty_text, route_key, kind):
     with st.container(border=True):
         head_left, head_right = st.columns([6, 2])
         with head_left:
             st.subheader(title, divider=False)
-            st.caption(caption)
         with head_right:
             render_page_link('查看全部', page_url(route_key))
 
@@ -78,9 +77,9 @@ with st.container(border=True):
         st.subheader('欢迎来到 OJ 调试平台', divider=False)
         if user:
             role_text = '管理员' if is_admin() else '普通用户'
-            st.caption(f'已恢复班级、作业、考试三类创新功能入口。当前登录：{user.get("username", "")}（{role_text}）')
+            st.caption(f'当前登录：{user.get("username", "")}（{role_text}）')
         else:
-            st.caption('首页保留平台概览与核心入口；登录后即可查看班级、作业和考试信息。')
+            st.caption('登录后可查看班级、作业、考试和个人提交信息。')
     with top_right:
         render_page_link('进入题库浏览', page_url('problems'), primary=True)
         render_page_link('查看提交记录', page_url('submissions'))
@@ -91,19 +90,10 @@ with st.container(border=True):
     m3.metric('考试', len(exams))
     m4.metric('身份', '管理员' if is_admin() else ('已登录' if user else '未登录'))
 
-    q1, q2, q3 = st.columns(3)
-    with q1:
-        render_page_link('进入班级功能', page_url('classes'))
-    with q2:
-        render_page_link('进入作业功能', page_url('assignments'))
-    with q3:
-        render_page_link('进入考试功能', page_url('exams'))
-
 col1, col2, col3 = st.columns(3, gap='large')
 with col1:
     render_preview_card(
         '班级概览',
-        '展示可见班级；没有数据时会明确提示暂无。',
         classes,
         '暂无班级数据',
         'classes',
@@ -112,7 +102,6 @@ with col1:
 with col2:
     render_preview_card(
         '作业概览',
-        '恢复原来的作业创新功能入口，并保留作业上下文做题。',
         assignments,
         '暂无作业数据',
         'assignments',
@@ -121,7 +110,6 @@ with col2:
 with col3:
     render_preview_card(
         '考试概览',
-        '恢复考试功能入口，可继续从考试上下文进入判题页。',
         exams,
         '暂无考试数据',
         'exams',
