@@ -515,16 +515,26 @@ async def api_problems_create(request: Request):
     missing = [k for k in required if k not in data or data.get(k) is None
                or (isinstance(data.get(k), str) and not (data.get(k) or '').strip()
                    and k in ('id', 'title'))]
+    if missing:
+        return _api_response(400, '缺少必填字段：' + ', '.join(missing))
     if not pid:
         return _api_response(400, '缺少必填字段：id')
     if not title:
         return _api_response(400, '缺少必填字段：title')
+    for field_name in ('description', 'input_description', 'output_description', 'constraints'):
+        value = data.get(field_name)
+        if not isinstance(value, str) or not value.strip():
+            return _api_response(400, f'缺少必填字段：{field_name}')
     samples = data.get('samples') or []
     testcases = data.get('testcases') or []
     if not isinstance(samples, list):
         return _api_response(400, 'samples 必须为数组')
     if not isinstance(testcases, list):
         return _api_response(400, 'testcases 必须为数组')
+    if not samples:
+        return _api_response(400, 'samples 不能为空')
+    if not testcases:
+        return _api_response(400, 'testcases 不能为空')
     tags = data.get('tags') or []
     if not isinstance(tags, list):
         return _api_response(400, 'tags 必须为数组')
@@ -2182,6 +2192,55 @@ async def api_ai_config_put(request: Request, viewer=None):
     return _api_response(200, '配置已保存')
 
 
+@app.put('/api/ai/model-config')
+@require_login(allow_admin_only=False)
+async def api_ai_model_config_compat(request: Request, viewer=None):
+    """兼容文档中的建议路径和字段名。"""
+    try:
+        data = await request.json() or {}
+    except Exception:
+        data = {}
+
+    compat_payload = {}
+    if 'provider' in data:
+        compat_payload['provider'] = data.get('provider')
+    elif data.get('provider_url'):
+        compat_payload['provider'] = 'custom'
+    if 'provider_url' in data or 'base_url' in data:
+        compat_payload['base_url'] = data.get('provider_url') or data.get('base_url')
+    if 'model' in data or 'model_name' in data:
+        compat_payload['model_name'] = data.get('model') or data.get('model_name')
+    if 'api_key' in data:
+        compat_payload['api_key'] = data.get('api_key')
+    if 'input_price' in data or 'price_input_per_1k' in data:
+        compat_payload['price_input_per_1k'] = data.get('input_price', data.get('price_input_per_1k'))
+    if 'output_price' in data or 'price_output_per_1k' in data:
+        compat_payload['price_output_per_1k'] = data.get('output_price', data.get('price_output_per_1k'))
+    if 'mock_mode' in data:
+        compat_payload['mock_mode'] = data.get('mock_mode')
+
+    class _CompatRequest:
+        def __init__(self, payload):
+            self._payload = payload
+
+        async def json(self):
+            return self._payload
+
+    resp = await api_ai_config_put(_CompatRequest(compat_payload), viewer=viewer)
+    if getattr(resp, 'status_code', 200) != 200:
+        return resp
+
+    cfg = _ai_load_config()
+    return _api_response(200, 'model config updated', {
+        'provider_url': cfg.get('base_url', ''),
+        'model': cfg.get('model_name', ''),
+        'api_key_configured': bool(cfg.get('api_key_encrypted')) and decrypt_api_key(cfg.get('api_key_encrypted')) != '',
+        'input_price': float(cfg.get('price_input_per_1k', 0) or 0),
+        'output_price': float(cfg.get('price_output_per_1k', 0) or 0),
+        'price_unit': int(data.get('price_unit') or 1000),
+    })
+
+
 @app.post('/api/ai/ping')
 @require_login(allow_admin_only=True)
 async def api_ai_ping(request: Request, viewer=None):
@@ -2309,6 +2368,26 @@ def _run_generation_logic(payload, task_uuid, sse_q, user_id):
     """
     def push(ev, d):
         sse_q.append((ev, d, _now_ms()))
+        try:
+            if GLOBAL_TASK_MANAGER is not None and hasattr(GLOBAL_TASK_MANAGER, '_meta'):
+                meta = GLOBAL_TASK_MANAGER._meta.get(task_uuid)
+                if meta is not None:
+                    meta['last_event'] = ev
+                    meta['last_payload'] = d
+                    meta['updated_at'] = _now_ms()
+                    if ev in ('start', 'step', 'draft', 'retried', 'cases', 'token'):
+                        meta['status'] = 'running'
+                    elif ev == 'complete':
+                        meta['status'] = 'ok'
+                        meta['final_json'] = d.get('final_json')
+                        meta['html_preview'] = d.get('html_preview') or meta.get('html_preview')
+                    elif ev == 'error':
+                        meta['status'] = 'error'
+                        meta['error_message'] = d.get('message')
+                    elif ev == 'cancelled':
+                        meta['status'] = 'cancelled'
+        except Exception:
+            pass
     started_ms = _now_ms()
     cfg = _ai_load_config()
     force_mock = bool(payload.get('mock_mode'))
@@ -2565,9 +2644,89 @@ async def api_ai_generate_problem(request: Request, viewer=None):
         task = asyncio.create_task(_coro2())
     if GLOBAL_TASK_MANAGER is not None:
         await GLOBAL_TASK_MANAGER.register(task, task_uuid=task_uuid, user_id=viewer.user_id, task_type='problem_gen')
+        async def _finalize_meta():
+            try:
+                await task
+                meta_status = 'running'
+                final_json = None
+                latest_preview = None
+                latest_error = None
+                for event_name, event_data, _ in sse_q:
+                    if event_name == 'draft':
+                        latest_preview = event_data.get('html_preview')
+                    elif event_name == 'complete':
+                        meta_status = 'ok'
+                        final_json = event_data.get('final_json')
+                    elif event_name == 'error':
+                        meta_status = 'error'
+                        latest_error = event_data.get('message')
+                    elif event_name == 'cancelled':
+                        meta_status = 'cancelled'
+                await GLOBAL_TASK_MANAGER.update_meta(
+                    task_uuid,
+                    status=meta_status,
+                    final_json=final_json,
+                    html_preview=latest_preview,
+                    error_message=latest_error,
+                    finished_at=_now_ms(),
+                )
+                if final_json:
+                    with _ai_conn() as c:
+                        now = _now_ms()
+                        c.execute(
+                            '''INSERT INTO ai_drafts(user_id,task_uuid,problem_json,created_at,updated_at)
+                               VALUES(?,?,?,?,?)''',
+                            (str(viewer.user_id), task_uuid, json.dumps(final_json, ensure_ascii=False), now, now),
+                        )
+            except asyncio.CancelledError:
+                await GLOBAL_TASK_MANAGER.update_meta(task_uuid, status='cancelled', finished_at=_now_ms())
+                raise
+            except Exception as exc:
+                await GLOBAL_TASK_MANAGER.update_meta(
+                    task_uuid,
+                    status='error',
+                    error_message=safe_log(exc),
+                    finished_at=_now_ms(),
+                )
+        asyncio.create_task(_finalize_meta())
     request.state._ai_sse_q = sse_q
     request.state._ai_task_uuid = task_uuid
     return _api_response(200, 'started', {'task_id': task_uuid})
+
+
+@app.post('/api/ai/problem-tasks/')
+@require_login(allow_admin_only=False)
+async def api_ai_problem_tasks_compat(request: Request, viewer=None):
+    return await api_ai_generate_problem(request, viewer=viewer)
+
+
+@app.get('/api/ai/problem-tasks/{task_id}')
+@require_login(allow_admin_only=False)
+async def api_ai_problem_task_status(task_id: str, request: Request, viewer=None):
+    meta = await GLOBAL_TASK_MANAGER.get_meta(task_id) if GLOBAL_TASK_MANAGER is not None else {}
+    if meta and str(meta.get('user_id', '')) not in ('', str(viewer.user_id)) and viewer.role != USER_ROLE_ADMIN:
+        return _api_response(403, '只能查看自己发起的任务')
+    if not meta:
+        with _ai_conn() as c:
+            row = c.execute(
+                'SELECT task_uuid, status, error_msg, started_at, finished_at FROM ai_task_logs WHERE task_uuid=?',
+                (task_id,),
+            ).fetchone()
+        if not row:
+            return _api_response(404, '任务不存在')
+        meta = dict(row)
+    result = {
+        'task_id': task_id,
+        'status': meta.get('status', 'running'),
+        'started_at': meta.get('started_at'),
+        'finished_at': meta.get('finished_at'),
+        'error_message': meta.get('error_message') or meta.get('error_msg'),
+        'last_event': meta.get('last_event'),
+        'last_payload': meta.get('last_payload'),
+        'html_preview': meta.get('html_preview'),
+        'result': meta.get('final_json'),
+    }
+    return _api_response(200, 'success', result)
 
 
 @app.get('/api/ai/tasks/{task_id}/stream')
@@ -2617,6 +2776,11 @@ async def api_ai_task_stream(task_id: str, request: Request):
     })
 
 
+@app.get('/api/ai/problem-tasks/{task_id}/stream')
+async def api_ai_problem_task_stream_compat(task_id: str, request: Request):
+    return await api_ai_task_stream(task_id, request)
+
+
 @app.post('/api/ai/tasks/{task_id}/cancel')
 @require_login(allow_admin_only=False)
 async def api_ai_task_cancel(task_id: str, request: Request, viewer=None):
@@ -2630,6 +2794,12 @@ async def api_ai_task_cancel(task_id: str, request: Request, viewer=None):
         c.execute('UPDATE ai_task_logs SET status=?, finished_at=?, error_msg=? WHERE task_uuid=?',
                   ('cancelled', _now_ms(), '用户取消', task_id))
     return _api_response(200, 'ok', {'cancelled': ok})
+
+
+@app.post('/api/ai/problem-tasks/{task_id}/cancel')
+@require_login(allow_admin_only=False)
+async def api_ai_problem_task_cancel_compat(task_id: str, request: Request, viewer=None):
+    return await api_ai_task_cancel(task_id, request, viewer=viewer)
 
 
 # ---------- FR-E drafts + logs/stats ----------

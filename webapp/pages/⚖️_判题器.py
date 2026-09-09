@@ -12,7 +12,7 @@ st.set_page_config(page_title='判题器 · OJ', page_icon='⚖️', layout='wid
 from common import (
     ensure_init, render_topbar, render_subheader,
     current_user, require_login_error, is_admin,
-    load_all_problems, api, toast_safe, goto,
+    load_all_problems, load_languages, api, toast_safe, goto,
 )
 
 LANG_DEFAULT_CODE = {
@@ -61,14 +61,12 @@ if not problem:
     if st.button('← 返回首页', type='primary'):
         goto('home')
     st.stop()
+problem = problem or {}
 
 # 预加载语言列表
 @st.cache_data(show_spinner=False, ttl=300)
 def get_langs():
-    c, d, _ = api('GET', '/api/languages/')
-    if c == 200 and isinstance(d, dict) and isinstance(d.get('data'), list):
-        return d['data']
-    return [{'name': 'python', 'is_builtin': True, 'default_time_limit': 1.0, 'default_memory_limit': 128}]
+    return [{'name': name} for name in load_languages()]
 
 langs = get_langs()
 lang_names = [l['name'] for l in langs]
@@ -83,7 +81,7 @@ def gs(k, d=None):
 def ss_set(k, v):
     ss[pk + k] = v
 
-if not gs('inited'):
+if problem and not gs('inited'):
     ss_set('inited', True)
     lang = problem.get('language') or (lang_names[0] if lang_names else 'python')
     if lang not in lang_names and lang_names:
@@ -428,23 +426,10 @@ with col_right:
 
             detail = load_detail(str(sid))
             cases = None
-            perm = 0
             if detail:
-                cases = (detail.get('details') or detail.get('case_results') or
-                         detail.get('cases') or None)
-                perm = int(detail.get('perm_mask') or 0)
-            if not cases and detail:
-                _dsid = _sid(detail)
-                c3, d3, _ = api('GET', f'/api/logs/access?submission_id={_dsid}&limit=1')
-                if c3 == 200 and isinstance(d3, dict) and isinstance(d3.get('data'), list) and d3['data']:
-                    try:
-                        raw = d3['data'][0].get('detail') or d3['data'][0].get('extra') or '{}'
-                        if isinstance(raw, str):
-                            raw = json.loads(raw)
-                        if isinstance(raw, dict):
-                            cases = raw.get('case_results') or raw.get('cases') or raw.get('details')
-                    except Exception:
-                        pass
+                c3, d3, _ = api('GET', f'/api/submissions/{sid}/log')
+                if c3 == 200 and isinstance(d3, dict) and isinstance(d3.get('data'), dict):
+                    cases = d3['data'].get('details') or None
 
             if not cases:
                 st.caption('（暂无逐测试点详情）')
@@ -454,13 +439,13 @@ with col_right:
                     if not isinstance(cs, dict):
                         continue
                     cs_status = cs.get('status') or cs.get('result') or '??'
-                    cs_time = cs.get('time_ms') or 0
+                    cs_time = cs.get('time_ms') or cs.get('time') or 0
                     cs_mem_kb = cs.get('memory_kb') or 0
-                    cs_mem_mb = round(cs_mem_kb / 1024, 2) if cs_mem_kb else 0
-                    cs_in = cs.get('input') if (perm & 1) else None
-                    cs_exp = cs.get('expected') if (perm & 2) else None
-                    cs_act = cs.get('actual') if (perm & 4) else None
-                    cs_err = (cs.get('stderr') or cs.get('error')) if (perm & 8) else None
+                    cs_mem_mb = round(cs_mem_kb / 1024, 2) if cs_mem_kb else round(float(cs.get('memory') or 0), 2)
+                    cs_in = cs.get('input')
+                    cs_exp = cs.get('expected')
+                    cs_act = cs.get('actual')
+                    cs_err = cs.get('stderr') or cs.get('error')
                     with st.expander(
                         f'#{i+1}  Test {i+1}   [{cs_status}]   ⏱ {cs_time}ms · 💾 {cs_mem_mb}MB',
                         expanded=(cs_status != 'AC')

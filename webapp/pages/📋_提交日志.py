@@ -1,23 +1,29 @@
 # -*- coding: utf-8 -*-
-"""
-提交日志（Streamlit 原生组件版，dataframe 表格 + 筛选）
-"""
-import sys, os, json
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-import streamlit as st
-import pandas as pd
+"""提交日志页。"""
 
-st.set_page_config(page_title='提交日志 · OJ', page_icon='📋', layout='wide',
-                   initial_sidebar_state='collapsed')
+import os
+import sys
+
+import pandas as pd
+import streamlit as st
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from common import (
-    ensure_init, render_topbar, render_subheader,
-    current_user, require_login_error, is_admin, is_teacher,
-    api, toast_safe, goto, load_all_problems,
+    api,
+    current_user,
+    ensure_init,
+    is_admin,
+    load_all_problems,
+    render_subheader,
+    render_topbar,
+    require_login_error,
 )
 
+st.set_page_config(page_title='提交日志 · OJ', page_icon='📋', layout='wide', initial_sidebar_state='collapsed')
+
 ensure_init()
-render_topbar('历史提交记录')
+render_topbar('评测历史与日志')
 render_subheader([('🏠 判题首页', 'home'), ('📋 提交日志', None)], 'submissions')
 
 user = current_user()
@@ -26,211 +32,143 @@ if not user:
     st.stop()
 
 problems = load_all_problems()
-id_to_title = {p.get('id'): p.get('title') for p in problems}
+problem_title_map = {item.get('id'): item.get('title') for item in problems}
 
-PAGE_SIZE = 50
+filters = st.session_state.get('submission_filters', {
+    'problem_id': '',
+    'status': '',
+    'user_id': str(user.get('user_id', '')),
+    'page': 1,
+})
 
-if 'sub_page' not in st.session_state:
-    st.session_state['sub_page'] = 1
-if 'sub_filters' not in st.session_state:
-    st.session_state['sub_filters'] = {
-        'problem_id': '', 'status': '', 'lang': '',
-        'user_id_or_username': '',
-        'mine': True,
-    }
-
-filters = st.session_state['sub_filters']
-
-# 顶部筛选条（原生表单）
-filter_box = st.container(border=True)
-with filter_box:
-    with st.form('sub_filter_form', clear_on_submit=False):
+with st.container(border=True):
+    st.subheader('筛选条件', divider=False)
+    with st.form('submission_filter_form'):
         c1, c2, c3, c4 = st.columns(4)
         with c1:
-            f_pid = st.text_input('题目 ID', value=filters.get('problem_id', ''))
+            problem_id = st.text_input('题目 ID', value=filters.get('problem_id', ''))
         with c2:
-            statuses = ['', 'AC', 'WA', 'TLE', 'MLE', 'OLE', 'RE', 'CE', 'SE', 'PE']
-            f_st = st.selectbox('状态', statuses, index=statuses.index(filters.get('status','')))
+            status = st.selectbox('状态', ['', 'pending', 'success', 'error', 'AC', 'WA', 'TLE', 'MLE', 'RE', 'CE'])
         with c3:
-            f_lang = st.text_input('语言（如 python/cpp/java/js）', value=filters.get('lang', ''))
+            user_id = st.text_input(
+                '用户 ID',
+                value=filters.get('user_id', ''),
+                disabled=not is_admin(),
+                help='普通用户只能查看自己的提交。',
+            )
         with c4:
-            f_uid = st.text_input('用户 ID / 用户名（管理员/老师可查他人）',
-                                  value=filters.get('user_id_or_username', ''),
-                                  disabled=(not is_admin() and not is_teacher()))
-        m1, m2, m3 = st.columns([3, 4, 4])
-        with m1:
-            f_mine = st.checkbox('只看我自己的提交', value=filters.get('mine', True))
-        with m2:
-            submitted = st.form_submit_button('🔍 筛选查询', type='primary', use_container_width=True)
-        with m3:
-            reset = st.form_submit_button('🔄 重置筛选', use_container_width=True)
-    if submitted:
-        filters['problem_id'] = f_pid
-        filters['status'] = f_st
-        filters['lang'] = f_lang
-        filters['user_id_or_username'] = f_uid if (is_admin() or is_teacher()) else ''
-        filters['mine'] = f_mine
-        st.session_state['sub_filters'] = filters
-        st.session_state['sub_page'] = 1
-        st.rerun()
-    if reset:
-        st.session_state['sub_filters'] = {
-            'problem_id': '', 'status': '', 'lang': '',
-            'user_id_or_username': '', 'mine': True,
+            page_size = st.selectbox('每页数量', [10, 20, 50], index=1)
+        submit = st.form_submit_button('查询', type='primary', use_container_width=True)
+    if submit:
+        st.session_state['submission_filters'] = {
+            'problem_id': problem_id.strip(),
+            'status': status,
+            'user_id': user_id.strip() if is_admin() else str(user.get('user_id', '')),
+            'page': 1,
+            'page_size': page_size,
         }
-        st.session_state['sub_page'] = 1
         st.rerun()
 
-# 查询
-params = {'limit': PAGE_SIZE + 1, 'page': st.session_state['sub_page']}
+filters = st.session_state.get('submission_filters', filters)
+page = int(filters.get('page', 1) or 1)
+page_size = int(filters.get('page_size', 20) or 20)
+params = {'page': page, 'page_size': page_size}
 if filters.get('problem_id'):
     params['problem_id'] = filters['problem_id']
 if filters.get('status'):
     params['status'] = filters['status']
-if filters.get('lang'):
-    params['language'] = filters['lang']
-if filters.get('user_id_or_username') and (is_admin() or is_teacher()):
-    params['user_id_or_username'] = filters['user_id_or_username']
-elif filters.get('mine') and user:
-    try:
-        params['user_id_or_username'] = str(user.get('id') or user.get('username'))
-    except Exception:
-        pass
-
-c, d, err = api('GET', '/api/submissions/', params=params)
-rows = []
-total_displayed = 0
-has_next = False
-if c == 200 and isinstance(d, dict) and isinstance(d.get('data'), list):
-    data = d['data']
-    has_next = len(data) > PAGE_SIZE
-    data = data[:PAGE_SIZE]
-    total_displayed = len(data)
-    for s in data:
-        rows.append({
-            'ID': s.get('id'),
-            '题目 ID': s.get('problem_id'),
-            '题目标题': id_to_title.get(s.get('problem_id'), s.get('problem_id') or ''),
-            '状态': s.get('status') or '--',
-            '得分': s.get('score', 0),
-            '语言': s.get('language') or '',
-            '用户 ID': s.get('user_id'),
-            '用户名': s.get('username') or '',
-            '用时 ms': s.get('time_ms', 0),
-            '内存 KB': s.get('memory_kb', 0),
-            '提交时间': s.get('created_at') or s.get('submit_time') or '',
-        })
-
-top_stats = st.container(border=True)
-with top_stats:
-    a, b, cc, dd = st.columns(4)
-    a.metric('当前页条数', f'{total_displayed}')
-    b.metric('AC 数', f'{sum(1 for r in rows if r["状态"] == "AC")}')
-    cc.metric('WA 数', f'{sum(1 for r in rows if r["状态"] == "WA")}')
-    dd.metric('当前筛选页码', f'#{st.session_state["sub_page"]}')
-
-st.subheader('📋 历史提交（点击行或查看详情按钮查看逐测试点结果）', divider=False)
-
-if not rows:
-    st.info('（暂无匹配的提交记录）')
+if is_admin():
+    if filters.get('user_id'):
+        params['user_id'] = filters['user_id']
+elif filters.get('problem_id'):
+    params['problem_id'] = filters['problem_id']
+    params['user_id'] = str(user.get('user_id', ''))
 else:
-    df = pd.DataFrame(rows)
-    st.dataframe(df, use_container_width=True, hide_index=True, height=480,
-                 column_order=['ID', '题目 ID', '题目标题', '状态', '得分', '语言',
-                               '用户 ID', '用户名', '用时 ms', '内存 KB', '提交时间'])
+    params['user_id'] = str(user.get('user_id', ''))
 
-    # 查看详情（selectbox 输入 Submission ID）
+code, data, err = api('GET', '/api/submissions/', params=params)
+payload = data.get('data') if isinstance(data, dict) else {}
+submissions = payload.get('submissions') if isinstance(payload, dict) else []
+total = int(payload.get('total', 0) or 0) if isinstance(payload, dict) else 0
+
+rows = []
+for item in submissions or []:
+    sid = item.get('submission_id') or item.get('id')
+    pid = item.get('problem_id', '')
+    rows.append({
+        '提交 ID': sid,
+        '题目 ID': pid,
+        '题目标题': problem_title_map.get(pid, pid),
+        '状态': item.get('status', ''),
+        '得分': item.get('score'),
+        '总分': item.get('counts'),
+    })
+
+with st.container(border=True):
+    st.subheader('提交列表', divider=False)
+    stats = st.columns(4)
+    stats[0].metric('当前页记录数', len(rows))
+    stats[1].metric('查询总数', total)
+    stats[2].metric('成功数', sum(1 for row in rows if str(row['状态']).lower() in ('success', 'ac')))
+    stats[3].metric('待评测数', sum(1 for row in rows if str(row['状态']).lower() == 'pending'))
+    if rows:
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    elif code == 200:
+        st.info('当前条件下没有提交记录。')
+    else:
+        st.error(f'查询失败：{data.get("msg") if data else err}')
+
+if rows:
     with st.container(border=True):
-        with st.form('view_detail_form', clear_on_submit=False):
-            c1, c2 = st.columns([5, 3])
-            with c1:
-                options = [f'#{r["ID"]}  |  {r["状态"]}  |  PID={r["题目 ID"]}  |  {r["题目标题"][:28]}' for r in rows]
-                if options:
-                    picked = st.selectbox('选择一个提交查看详情（默认第一条）', options, index=0)
-                    pick_idx = options.index(picked)
-                    picked_id = rows[pick_idx]['ID']
-                else:
-                    picked_id = st.text_input('Submission ID', '')
-            with c2:
-                st.caption('')
-                sbm = st.form_submit_button('🔎 查看详情 / 跳转判题页', type='primary', use_container_width=True)
-        if sbm and picked_id:
-            # 跳转判题页（带上 submission 参数）
-            pid_choice = next((r['题目 ID'] for r in rows if str(r['ID']) == str(picked_id)), None)
-            if pid_choice:
-                goto('judge', id=str(pid_choice), submission=str(picked_id))
+        st.subheader('查看详情', divider=False)
+        options = {f"{row['提交 ID']} · {row['题目 ID']} · {row['状态']}": row['提交 ID'] for row in rows}
+        selection = st.selectbox('选择一条提交', list(options.keys()))
+        submission_id = options[selection]
+        detail_code, detail_data, detail_err = api('GET', f'/api/submissions/{submission_id}')
+        log_code, log_data, log_err = api('GET', f'/api/submissions/{submission_id}/log')
+
+        if detail_code == 200 and isinstance(detail_data, dict) and detail_data.get('data'):
+            detail = detail_data['data']
+            info_cols = st.columns(5)
+            info_cols[0].metric('提交 ID', detail.get('submission_id', submission_id))
+            info_cols[1].metric('状态', detail.get('status', ''))
+            info_cols[2].metric('得分', detail.get('score'))
+            info_cols[3].metric('总分', detail.get('counts'))
+            info_cols[4].metric('编译结果', (detail.get('compile_info') or {}).get('result', '-'))
+            st.code((detail.get('compile_info') or {}).get('message') or '', language=None)
+            st.code((detail.get('run_info') or {}).get('message') or '', language=None)
+            if detail.get('error_info'):
+                st.error(detail.get('error_info'))
+        else:
+            st.error(f'详情加载失败：{detail_data.get("msg") if detail_data else detail_err}')
+
+        if log_code == 200 and isinstance(log_data, dict) and log_data.get('data'):
+            log_detail = log_data['data']
+            details = log_detail.get('details') or []
+            if details:
+                table = []
+                for item in details:
+                    table.append({
+                        '测试点': item.get('id'),
+                        '结果': item.get('result'),
+                        '耗时': item.get('time'),
+                        '内存': item.get('memory'),
+                    })
+                st.markdown('#### 测试点详情')
+                st.dataframe(pd.DataFrame(table), use_container_width=True, hide_index=True)
             else:
-                # 只带 submission 也能进入判题详情（若没有 pid 判题页会 fallback 载入）
-                # 为保险起见：直接在本页 render 详情
-                st.info(f'加载 Submission #{picked_id} 的详情...')
-                c, d, _ = api('GET', f'/api/submissions/{picked_id}')
-                if c == 200 and d and d.get('data'):
-                    sub = d['data']
-                    perm = int(sub.get('perm_mask') or 0)
-                    cases = (sub.get('details') or sub.get('case_results') or
-                             sub.get('cases') or [])
-                    if not isinstance(cases, list):
-                        try:
-                            raw = sub.get('detail') or sub.get('extra') or '{}'
-                            if isinstance(raw, str):
-                                raw = json.loads(raw)
-                            if isinstance(raw, dict):
-                                cases = raw.get('case_results') or raw.get('cases') or raw.get('details') or []
-                        except Exception:
-                            cases = []
-                    cols = st.columns(4)
-                    cols[0].metric('状态', str(sub.get('status') or '--'))
-                    cols[1].metric('得分', f'{sub.get("score",0)} / {sub.get("total_cases",0)*10 if sub.get("total_cases",0) else 100}')
-                    cols[2].metric('用时 ms', f'{sub.get("time_ms",0)}')
-                    cols[3].metric('内存 KB', f'{sub.get("memory_kb",0)}')
-                    st.code(sub.get('code') or '(无权查看代码)', language=None if perm & 0x10 else None)
-                    st.markdown('#### 逐测试点')
-                    for i, cs in enumerate(cases or []):
-                        if not isinstance(cs, dict):
-                            continue
-                        with st.expander(
-                            f'#{i+1} [{cs.get("status") or cs.get("result") or "??"}]  ⏱ {cs.get("time_ms",0)}ms · 💾 {round((cs.get("memory_kb",0) or 0)/1024,2)}MB',
-                            expanded=(cs.get('status') not in ('AC',))
-                        ):
-                            a, b = st.columns(2)
-                            with a:
-                                if cs.get('input') is not None and (perm & 1):
-                                    st.caption('🔤 Input')
-                                    st.code(cs.get('input'), language=None)
-                                else:
-                                    st.info('🔒 无权查看 Input')
-                            with b:
-                                if cs.get('stderr') or cs.get('error'):
-                                    st.caption('❌ 错误')
-                                    st.code(cs.get('stderr') or cs.get('error'), language=None)
-                            a, b = st.columns(2)
-                            with a:
-                                if cs.get('expected') is not None and (perm & 2):
-                                    st.caption('✅ Expected')
-                                    st.code(cs.get('expected'), language=None)
-                                else:
-                                    st.info('🔒 Expected')
-                            with b:
-                                if cs.get('actual') is not None and (perm & 4):
-                                    st.caption('💻 Actual')
-                                    st.code(cs.get('actual'), language=None)
-                                else:
-                                    st.info('🔒 Actual')
+                st.info('当前用户无权查看测试点详情，或该提交没有明细。')
+        elif log_code not in (200, 403):
+            st.error(f'日志加载失败：{log_data.get("msg") if log_data else log_err}')
 
-# 翻页
-p1, p2, p3 = st.columns([2, 2, 8])
-with p1:
-    if st.button('⬅ 上一页', disabled=(st.session_state['sub_page'] <= 1),
-                 use_container_width=True):
-        st.session_state['sub_page'] = max(1, st.session_state['sub_page'] - 1)
+pager_left, pager_right, pager_info = st.columns([2, 2, 6])
+with pager_left:
+    if st.button('上一页', use_container_width=True, disabled=page <= 1):
+        st.session_state['submission_filters']['page'] = max(1, page - 1)
         st.rerun()
-with p2:
-    if st.button('下一页 ➡', disabled=(not has_next),
-                 type='primary' if has_next else 'secondary',
-                 use_container_width=True):
-        st.session_state['sub_page'] += 1
+with pager_right:
+    if st.button('下一页', use_container_width=True, disabled=page * page_size >= total):
+        st.session_state['submission_filters']['page'] = page + 1
         st.rerun()
-with p3:
-    st.caption(f'当前页 #{st.session_state["sub_page"]}  ·  每页最多 {PAGE_SIZE} 条  ·  {"还有更多页" if has_next else "已是最后一页"}')
-
-st.caption('© OJ 在线判题平台 · Streamlit 前端 + FastAPI 后端（Python 双栈架构）')
+with pager_info:
+    st.caption(f'当前第 {page} 页，每页 {page_size} 条。')
