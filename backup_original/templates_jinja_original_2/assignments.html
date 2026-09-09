@@ -1,0 +1,1069 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>作业中心 - OJ 调试平台</title>
+    <link rel="stylesheet" href="{{ static_url('style.css') }}">
+</head>
+<body>
+    <header class="topbar">
+        <div class="topbar-inner">
+            <div class="topbar-title">
+                <span class="topbar-title-icon">&#128187;</span>
+                <span>OJ 调试平台</span>
+            </div>
+            <div class="topbar-info" id="topUserArea">
+                <span class="topbar-tag">{% if current_user and current_user.is_admin %}作业中心控制台{% else %}我的作业{% endif %}</span>
+                <span id="topStatusBox"></span>
+            </div>
+        </div>
+    </header>
+
+    <main class="container">
+        <div class="page-subheader">
+            <div class="subh-breadcrumb">
+                <a href="/">&#127968; 判题首页</a>
+                <span>&rsaquo;</span>
+                <span class="subh-cur">📚 {% if current_user and current_user.is_admin %}作业中心{% else %}我的作业{% endif %}</span>
+            </div>
+            <div class="subh-pill-group">
+                <a href="/submissions" class="subh-pill">📋 {% if current_user and current_user.is_admin %}提交日志{% else %}我的提交{% endif %}</a>
+                <a href="/classes" class="subh-pill">🎓 {% if current_user and current_user.is_admin %}班级管理{% else %}我的班级{% endif %}</a>
+                <a href="/assignments" class="subh-pill active-subh">📚 {% if current_user and current_user.is_admin %}作业中心{% else %}我的作业{% endif %}</a>
+                <a href="/exams" class="subh-pill">📝 {% if current_user and current_user.is_admin %}考试中心{% else %}我的考试{% endif %}</a>
+                {% if current_user and current_user.is_admin %}
+                <a href="/problems" class="subh-pill">🗂 题目管理</a>
+                <a href="/users" class="subh-pill">👥 用户管理</a>
+                {% endif %}
+            </div>
+        </div>
+
+        <section class="card">
+            <div class="card-header">
+                <div class="card-title">
+                    <span class="card-title-dot"></span>
+                    <span>📚 {% if current_user and current_user.is_admin %}作业列表（管理）{% else %}我的作业{% endif %}</span>
+                </div>
+                <div style="font-size:12.5px;color:#999;">
+                    共 <span id="totalCount" style="font-weight:600;color:#e53935;">0</span> 项作业
+                </div>
+            </div>
+            <div class="card-body">
+                <div class="admin-toolbar">
+                    <div class="toolbar-left">
+                        <input type="text" id="keywordInput" class="form-input"
+                               placeholder="&#128269; {% if current_user and current_user.is_admin %}按作业标题搜索（模糊匹配）{% else %}搜索作业名称...{% endif %}"
+                               style="width:360px;">
+                        <button id="searchBtn" class="btn btn-accent btn-sm" type="button">
+                            &#128269; 搜索
+                        </button>
+                        <button id="resetSearchBtn" class="btn btn-secondary btn-sm" type="button">
+                            &#8634; 重置
+                        </button>
+                    </div>
+                    <div class="toolbar-right" id="adminToolbarRight">
+                        <button id="refreshBtn" class="btn btn-sm" type="button"
+                                style="background:#f5f5f5;color:#555;">
+                            &#128260; 刷新
+                        </button>
+                        {% if current_user and current_user.is_admin %}
+                        &nbsp;
+                        <button id="newAssignmentBtn" class="btn btn-primary btn-sm" type="button">
+                            &#43; 新建作业
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div id="assignmentListWrap" style="margin-top:16px;">
+                    <div style="text-align:center;padding:40px;color:#999;">
+                        <div style="font-size:36px;margin-bottom:8px;">&#9203;</div>
+                        正在加载作业列表...
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <footer>
+            &copy; OJ 在线判题平台
+        </footer>
+    </main>
+
+    <!-- ============ 作业编辑弹窗 ============ -->
+    <div id="assignmentModalMask" class="modal-mask" style="display:none;">
+        <div class="modal-card" style="max-width:900px;">
+            <div class="modal-header">
+                <div class="modal-title" id="assignmentModalTitle">新建作业</div>
+                <button class="modal-close" id="assignmentCloseBtn" type="button">&times;</button>
+            </div>
+            <div class="modal-body" style="max-height:75vh;overflow-y:auto;padding-bottom:20px;">
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label>作业标题 <span style="color:#e53935;">*</span></label>
+                        <input type="text" id="a_title" class="form-input" placeholder="如：第1周作业 - 顺序结构">
+                    </div>
+                    <div class="form-group">
+                        <label>所属班级 <span style="color:#e53935;">*</span></label>
+                        <select id="a_class_id" class="form-input">
+                            <option value="">-- 请选择班级 --</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-row-2">
+                    <div class="form-group">
+                        <label>开始时间 <span style="color:#e53935;">*</span></label>
+                        <input type="datetime-local" id="a_start_time" class="form-input">
+                    </div>
+                    <div class="form-group">
+                        <label>截止时间 <span style="color:#e53935;">*</span></label>
+                        <input type="datetime-local" id="a_end_time" class="form-input">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>作业说明</label>
+                    <textarea id="a_description" class="form-textarea" style="height:80px;"
+                              placeholder="可选，本次作业的要求、说明、评分标准等"></textarea>
+                </div>
+
+                <div style="font-size:13px;color:#666;margin:14px 0 6px;font-weight:600;">
+                    &#128221; 选择题目
+                </div>
+                <div style="border:1px solid #eee;border-radius:8px;padding:10px 14px;margin-bottom:14px;">
+                    <div style="display:flex;gap:8px;margin-bottom:10px;">
+                        <input type="text" id="probKwInput" class="form-input" placeholder="按题目 ID/标题搜索题目" style="flex:1;">
+                        <button type="button" class="btn btn-accent btn-sm" onclick="searchProblemsPicker()">&#128269; 搜索</button>
+                    </div>
+                    <div id="problemPickerWrap" style="max-height:220px;overflow-y:auto;border:1px solid #f0f0f0;border-radius:6px;padding:8px;background:#fafafa;">
+                        <div style="padding:12px;text-align:center;color:#999;">请先点击搜索加载题目</div>
+                    </div>
+                    <div style="margin-top:10px;font-size:12.5px;color:#555;">
+                        已选题目 (<span id="pickedCount" style="font-weight:600;color:#1976d2;">0</span>)：
+                        <div id="pickedProblemsBox" style="margin-top:6px;display:flex;flex-wrap:wrap;gap:6px;"></div>
+                    </div>
+                </div>
+
+                <div style="font-size:13px;color:#666;margin:14px 0 6px;font-weight:600;">
+                    &#9881;&#65039; 功能开关 (Flags)
+                </div>
+                <div style="border:1px solid #eee;border-radius:8px;padding:12px 14px;margin-bottom:14px;">
+                    <div class="form-row-2">
+                        <label class="flag-row">
+                            <input type="checkbox" id="f_allow_late" checked>
+                            <span><b>允许迟交</b><span style="color:#999;font-size:12px;">（截止后仍可提交，但可能扣分）</span></span>
+                        </label>
+                        <label class="flag-row">
+                            <input type="checkbox" id="f_show_score">
+                            <span><b>实时显示分数</b><span style="color:#999;font-size:12px;">（提交后立即显示得分）</span></span>
+                        </label>
+                        <label class="flag-row">
+                            <input type="checkbox" id="f_show_rank">
+                            <span><b>显示排行榜</b><span style="color:#999;font-size:12px;">（学生间可见完成情况排行）</span></span>
+                        </label>
+                        <label class="flag-row">
+                            <input type="checkbox" id="f_allow_resubmit" checked>
+                            <span><b>允许多次提交</b><span style="color:#999;font-size:12px;">（取最高分作为最终成绩）</span></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="form-hint" id="assignmentFormHint"></div>
+                <div id="assignmentResult" class="auth-result" style="margin-top:8px;"></div>
+            </div>
+            <div class="modal-footer form-actions-bar">
+                <button id="assignmentCancelBtn" class="btn btn-secondary" type="button">取消</button>
+                <button id="assignmentSaveBtn" class="btn btn-primary" type="button">&#128190; 保存作业</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ 作业详情弹窗 ============ -->
+    <div id="assignmentDetailMask" class="modal-mask" style="display:none;">
+        <div class="modal-card" style="max-width:1080px;">
+            <div class="modal-header">
+                <div class="modal-title" id="assignmentDetailTitle">作业详情</div>
+                <button class="modal-close" id="assignmentDetailCloseBtn" type="button">&times;</button>
+            </div>
+            <div class="modal-body" style="max-height:75vh;overflow-y:auto;padding-bottom:20px;">
+                <div id="detailInfoBox" style="margin-bottom:14px;padding:10px 14px;background:#f5f7fa;border-radius:8px;"></div>
+                <div class="admin-toolbar" style="margin-bottom:10px;">
+                    <div class="toolbar-left">
+                        <button id="exportMatrixBtn" class="btn btn-sm" type="button" style="background:#e8f5e9;color:#2e7d32;">
+                            &#128196; 导出成绩矩阵 CSV
+                        </button>
+                    </div>
+                </div>
+                <div style="font-weight:600;margin-bottom:8px;">&#128221; 题目列表（点击进入判题）</div>
+                <div id="detailProblemsWrap" style="margin-bottom:16px;"></div>
+                <div style="font-weight:600;margin-bottom:8px;">&#128202; 完成情况矩阵</div>
+                <div id="detailMatrixWrap" style="border:1px solid #eee;border-radius:8px;overflow:auto;"></div>
+            </div>
+            <div class="modal-footer form-actions-bar">
+                <button id="assignmentDetailCancelBtn" class="btn btn-secondary" type="button">关闭</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 登录/注册弹窗（复用，防止会话过期后卡住） -->
+    <div id="authModalMask" class="modal-mask" style="display:none;">
+        <div class="modal-card">
+            <div class="modal-header">
+                <div class="modal-title" id="authTitle">登录</div>
+                <button class="modal-close" id="authCloseBtn" type="button">&times;</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label>用户名 <span style="color:#999;font-size:12px;">(3-40 字符)</span></label>
+                    <input type="text" id="authUsername" class="form-input" placeholder="请输入用户名" autocomplete="username">
+                </div>
+                <div class="form-group">
+                    <label>密码 <span style="color:#999;font-size:12px;">(至少 6 位)</span></label>
+                    <div class="password-wrap">
+                        <input type="password" id="authPassword" class="form-input" placeholder="请输入密码" autocomplete="new-password">
+                        <button type="button" class="eye-btn" id="eyePwd" title="显示/隐藏密码">
+                            <span id="eyePwdIcon">&#128065;</span>
+                        </button>
+                    </div>
+                </div>
+                <div id="confirmPasswordBlock" style="display:none;">
+                    <div class="form-group">
+                        <label>确认密码 <span style="color:#999;font-size:12px;">(再次输入相同密码)</span></label>
+                        <div class="password-wrap">
+                            <input type="password" id="authPassword2" class="form-input" placeholder="请再次输入密码" autocomplete="new-password">
+                            <button type="button" class="eye-btn" id="eyePwd2" title="显示/隐藏密码">
+                                <span id="eyePwd2Icon">&#128065;</span>
+                            </button>
+                        </div>
+                    </div>
+                    <div class="strength-wrap" id="strengthWrap">
+                        <div class="strength-bar">
+                            <div class="strength-seg"></div>
+                            <div class="strength-seg"></div>
+                            <div class="strength-seg"></div>
+                        </div>
+                        <div class="strength-label">
+                            <span>密码强度：</span>
+                            <span class="strength-grade">
+                                <span class="tag" id="strengthTag">弱</span>
+                                <span id="strengthText" style="margin-left:6px;">可再加强一下</span>
+                            </span>
+                        </div>
+                        <ul class="strength-hint-list" id="strengthHints">
+                            <li data-rule="length">密码长度 ≥ 8 位</li>
+                            <li data-rule="lower">包含小写字母 (a-z)</li>
+                            <li data-rule="upper">包含大写字母 (A-Z)</li>
+                            <li data-rule="digit">包含数字 (0-9)</li>
+                            <li data-rule="special">包含特殊符号 (!@#$%^&* 等)</li>
+                        </ul>
+                        <div id="confirmHint" style="margin-top:8px;font-size:12.5px;"></div>
+                    </div>
+                </div>
+                <div class="form-hint" id="authHint"></div>
+                <div id="authResult" class="auth-result"></div>
+            </div>
+            <div class="modal-footer">
+                <button id="authToggle" class="btn btn-secondary" type="button">切换到注册</button>
+                <button id="authSubmit" class="btn btn-primary" type="button">登录</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast" style="display:none;"></div>
+
+    <script>
+    const INITIAL_USER = {{ current_user|tojson if current_user else 'null' }};
+    window.__IS_ADMIN__ = !!(INITIAL_USER && INITIAL_USER.is_admin);
+    let currentUser = INITIAL_USER;
+    let authMode = 'login';
+    let currentKeyword = '';
+    let allAssignments = [];
+    let editingAssignmentId = null;
+    let currentDetailAid = null;
+    let pickedProblemIds = [];
+    let allClassesForPicker = [];
+    let allProblemsForPicker = [];
+
+    const $ = id => document.getElementById(id);
+
+    function escapeHtml(text) {
+        const div = document.createElement('div');
+        div.textContent = (text ?? '') + '';
+        return div.innerHTML;
+    }
+
+    function showToast(msg, type='info', ms=2000) {
+        const t = $('toast');
+        t.className = 'toast toast-' + type;
+        t.textContent = msg;
+        t.style.display = 'block';
+        setTimeout(() => t.style.display = 'none', ms);
+    }
+
+    // ============ 顶栏 & 会话 ============
+    function renderTopUser() {
+        const box = $('topStatusBox');
+        if (currentUser) {
+            const roleLabel = currentUser.role === 'admin'
+                ? '<span style="background:rgba(255,235,59,0.25);padding:2px 8px;border-radius:10px;font-size:12px;color:#fff8e1;">管理员</span>'
+                : currentUser.role === 'banned'
+                  ? '<span style="background:rgba(0,0,0,0.2);padding:2px 8px;border-radius:10px;font-size:12px;color:#ffcdd2;">已封禁</span>'
+                  : '<span style="background:rgba(255,255,255,0.15);padding:2px 8px;border-radius:10px;font-size:12px;color:#e3f2fd;">普通用户</span>';
+            box.innerHTML = `
+                <span style="margin-right:6px;">${roleLabel}</span>
+                <span style="font-weight:600;">${escapeHtml(currentUser.username)}</span>
+                &nbsp;
+                <button id="logoutBtn" class="btn btn-sm" style="background:rgba(255,255,255,0.2);color:#fff;box-shadow:none;">登出</button>
+            `;
+            $('logoutBtn') && ($('logoutBtn').onclick = logout);
+        } else {
+            box.innerHTML = `
+                <button id="openLoginBtn" class="btn btn-sm" style="background:rgba(255,255,255,0.2);color:#fff;box-shadow:none;">登录</button>
+                &nbsp;
+                <button id="openRegisterBtn" class="btn btn-sm" style="background:rgba(255,255,255,0.28);color:#fff;box-shadow:none;">注册</button>
+            `;
+            $('openLoginBtn').onclick = () => openAuth('login');
+            $('openRegisterBtn').onclick = () => openAuth('register');
+        }
+    }
+
+    async function logout() {
+        await fetch('/api/auth/logout', { method: 'POST' });
+        currentUser = null;
+        renderTopUser();
+        showToast('已退出登录，正在跳转首页', 'ok');
+        setTimeout(() => { window.location.href = '/'; }, 800);
+    }
+
+    // ============ 认证弹窗（同 index/users 一致）============
+    function evaluateStrength(pwd) {
+        pwd = pwd || '';
+        const rules = {
+            length:  pwd.length >= 8,
+            lower:   /[a-z]/.test(pwd),
+            upper:   /[A-Z]/.test(pwd),
+            digit:   /[0-9]/.test(pwd),
+            special: /[^A-Za-z0-9]/.test(pwd),
+        };
+        const count = Object.values(rules).filter(Boolean).length;
+        let level = 'weak';
+        if (count <= 1) level = 'weak';
+        else if (count <= 3) level = 'mid';
+        else level = 'strong';
+        return { rules, count, level };
+    }
+    function renderStrength(pwd, pwd2) {
+        const wrap = $('strengthWrap');
+        const sr = evaluateStrength(pwd);
+        wrap.classList.remove('strength-weak', 'strength-mid', 'strength-strong');
+        wrap.classList.add('strength-' + sr.level);
+        $('strengthTag').textContent = sr.level === 'weak' ? '低' : sr.level === 'mid' ? '中' : '高';
+        $('strengthText').textContent = sr.level === 'weak'
+            ? '可再加强一下'
+            : sr.level === 'mid' ? '一般，建议加入更多类型' : '非常强，很安全！';
+        wrap.querySelectorAll('[data-rule]').forEach(li => {
+            const r = li.getAttribute('data-rule');
+            if (sr.rules[r]) li.classList.add('ok');
+            else li.classList.remove('ok');
+        });
+        const hint = $('confirmHint');
+        if (pwd && pwd2) {
+            if (pwd === pwd2) {
+                hint.innerHTML = '<span class="confirm-ok">&#9989; 两次输入的密码一致</span>';
+            } else {
+                hint.innerHTML = '<span class="confirm-err">&#10060; 两次输入的密码不一致</span>';
+            }
+        } else {
+            hint.textContent = '';
+        }
+        return sr;
+    }
+    function toggleEye(btnId, inputId, iconId) {
+        const btn = $(btnId), inp = $(inputId), ic = $(iconId);
+        btn.onclick = () => {
+            if (inp.type === 'password') {
+                inp.type = 'text';
+                ic.textContent = '\u{1F6AB}';
+                btn.title = '点击隐藏密码';
+            } else {
+                inp.type = 'password';
+                ic.textContent = '\u{1F441}';
+                btn.title = '点击显示密码';
+            }
+        };
+    }
+    function openAuth(mode) {
+        authMode = mode;
+        $('authTitle').textContent = mode === 'login' ? '用户登录' : '用户注册';
+        $('authSubmit').textContent = mode === 'login' ? '登录' : '注册并登录';
+        $('authToggle').textContent = mode === 'login' ? '切换到注册' : '切换到登录';
+        $('authUsername').value = '';
+        $('authPassword').value = '';
+        const pwd2 = $('authPassword2'); if (pwd2) pwd2.value = '';
+        $('authResult').textContent = '';
+        $('authResult').className = 'auth-result';
+        if (mode === 'login') {
+            $('confirmPasswordBlock').style.display = 'none';
+            $('authHint').innerHTML = '初始管理员账号：<b>admin</b> / <b>admintestpassword</b>';
+        } else {
+            $('confirmPasswordBlock').style.display = 'block';
+            $('authHint').innerHTML = '注册后将自动登录；管理员无法通过自注册创建。';
+            renderStrength('', '');
+        }
+        $('authModalMask').style.display = 'flex';
+        setTimeout(() => $('authUsername').focus(), 60);
+    }
+    function closeAuth() { $('authModalMask').style.display = 'none'; }
+
+    async function submitAuth() {
+        const username = $('authUsername').value.trim();
+        const password = $('authPassword').value;
+        const password2 = authMode === 'register' ? ($('authPassword2') ? $('authPassword2').value : '') : '';
+        const result = $('authResult');
+        if (!username || !password) {
+            result.className = 'auth-result auth-err';
+            result.textContent = '用户名和密码不能为空';
+            return;
+        }
+        if (authMode === 'register') {
+            if (password.length < 6) {
+                result.className = 'auth-result auth-err';
+                result.textContent = '密码长度至少 6 位';
+                return;
+            }
+            if (password !== password2) {
+                result.className = 'auth-result auth-err';
+                result.textContent = '两次输入的密码不一致，请确认';
+                return;
+            }
+            const sr = evaluateStrength(password);
+            if (sr.level === 'weak') {
+                result.className = 'auth-result auth-err';
+                result.textContent = '密码强度过低，请至少满足 2 条以上规则';
+                return;
+            }
+        }
+        const url = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+        try {
+            const resp = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password }),
+            });
+            const data = await resp.json();
+            if (data.code === 200) {
+                result.className = 'auth-result auth-ok';
+                result.textContent = authMode === 'login' ? '登录成功' : '注册成功，已自动登录';
+                await refreshMe();
+                setTimeout(() => {
+                    closeAuth();
+                    showToast(authMode === 'login' ? `欢迎回来，${currentUser.username}` : '注册成功', 'ok');
+                    loadAssignments();
+                }, 400);
+            } else {
+                result.className = 'auth-result auth-err';
+                result.textContent = (data.msg || '操作失败') + ` (code=${data.code})`;
+            }
+        } catch (e) {
+            result.className = 'auth-result auth-err';
+            result.textContent = '请求失败: ' + e.message;
+        }
+    }
+
+    async function refreshMe() {
+        try {
+            const resp = await fetch('/api/auth/me');
+            const data = await resp.json();
+            if (data.code === 200) {
+                currentUser = data.data;
+            } else {
+                currentUser = null;
+            }
+        } catch { currentUser = null; }
+        renderTopUser();
+        return currentUser;
+    }
+
+    // ============ 题目/班级选择器 ============
+    async function loadClassesForPicker() {
+        try {
+            const resp = await fetch('/api/classes');
+            const data = await resp.json();
+            if (data.code === 200) {
+                allClassesForPicker = data.data || [];
+                const sel = $('a_class_id');
+                sel.innerHTML = '<option value="">-- 请选择班级 --</option>' +
+                    allClassesForPicker.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name || c.id)}</option>`).join('');
+            }
+        } catch {}
+    }
+
+    async function searchProblemsPicker() {
+        const kw = ($('probKwInput').value || '').trim();
+        const wrap = $('problemPickerWrap');
+        wrap.innerHTML = '<div style="padding:12px;text-align:center;color:#999;">&#9203; 加载中...</div>';
+        try {
+            const url = kw ? `/api/problems?keyword=${encodeURIComponent(kw)}` : '/api/problems';
+            const resp = await fetch(url);
+            const data = await resp.json();
+            if (data.code === 200) {
+                allProblemsForPicker = data.data || [];
+                renderProblemPicker();
+            } else {
+                wrap.innerHTML = '<div style="padding:12px;text-align:center;color:#c62828;">加载失败：' + escapeHtml(data.msg || '') + '</div>';
+            }
+        } catch (e) {
+            wrap.innerHTML = '<div style="padding:12px;text-align:center;color:#c62828;">请求失败：' + escapeHtml(e.message) + '</div>';
+        }
+    }
+
+    function renderProblemPicker() {
+        const wrap = $('problemPickerWrap');
+        if (!allProblemsForPicker.length) {
+            wrap.innerHTML = '<div style="padding:12px;text-align:center;color:#999;">没有匹配的题目</div>';
+            return;
+        }
+        wrap.innerHTML = allProblemsForPicker.map(p => {
+            const checked = pickedProblemIds.includes(p.id);
+            return `
+            <label class="prob-pick-row ${checked ? 'on' : ''}">
+                <input type="checkbox" data-pid="${escapeHtml(p.id)}" ${checked ? 'checked' : ''} onchange="togglePickProblem('${escapeHtml(p.id)}')">
+                <span class="prob-pick-id">${escapeHtml(p.id)}</span>
+                <span class="prob-pick-title">${escapeHtml(p.title || '-')}</span>
+                ${p.difficulty ? `<span class="tag tag-subtle">${escapeHtml(p.difficulty)}</span>` : ''}
+            </label>`;
+        }).join('');
+    }
+
+    function togglePickProblem(pid) {
+        const idx = pickedProblemIds.indexOf(pid);
+        if (idx >= 0) pickedProblemIds.splice(idx, 1);
+        else pickedProblemIds.push(pid);
+        renderPickedBox();
+        const cb = document.querySelector(`input[data-pid="${CSS.escape(pid)}"]`);
+        if (cb) {
+            const row = cb.closest('.prob-pick-row');
+            if (row) row.classList.toggle('on', pickedProblemIds.includes(pid));
+        }
+    }
+
+    function renderPickedBox() {
+        $('pickedCount').textContent = pickedProblemIds.length;
+        const box = $('pickedProblemsBox');
+        if (!pickedProblemIds.length) {
+            box.innerHTML = '<span style="color:#999;font-size:12px;">（尚未选择题目）</span>';
+            return;
+        }
+        box.innerHTML = pickedProblemIds.map(pid => `
+            <span class="tag tag-subtle" style="display:inline-flex;align-items:center;gap:4px;">
+                ${escapeHtml(pid)}
+                <span style="cursor:pointer;color:#c62828;" onclick="removePicked('${escapeHtml(pid)}')">&times;</span>
+            </span>
+        `).join('');
+    }
+
+    function removePicked(pid) {
+        const idx = pickedProblemIds.indexOf(pid);
+        if (idx >= 0) pickedProblemIds.splice(idx, 1);
+        renderPickedBox();
+        renderProblemPicker();
+    }
+
+    // ============ 作业编辑弹窗 ============
+    function clearAssignmentForm() {
+        ['a_title','a_description','a_start_time','a_end_time'].forEach(id => $(id).value = '');
+        $('a_class_id').value = '';
+        $('f_allow_late').checked = true;
+        $('f_show_score').checked = false;
+        $('f_show_rank').checked = false;
+        $('f_allow_resubmit').checked = true;
+        pickedProblemIds = [];
+        renderPickedBox();
+        $('probKwInput').value = '';
+        $('problemPickerWrap').innerHTML = '<div style="padding:12px;text-align:center;color:#999;">请先点击搜索加载题目</div>';
+        $('assignmentResult').textContent = '';
+        $('assignmentResult').className = 'auth-result';
+        $('assignmentFormHint').textContent = '';
+        editingAssignmentId = null;
+    }
+
+    function openAssignmentModal(mode, seedData) {
+        clearAssignmentForm();
+        $('assignmentModalTitle').textContent = mode === 'edit' ? '编辑作业' : '新建作业';
+        loadClassesForPicker();
+        if (seedData) {
+            editingAssignmentId = seedData.id || null;
+            $('a_title').value = seedData.title || '';
+            $('a_class_id').value = seedData.class_id || seedData.classId || '';
+            $('a_description').value = seedData.description || '';
+            if (seedData.start_time || seedData.starts_at) {
+                const v = (seedData.start_time || seedData.starts_at || '').replace(' ', 'T').slice(0, 16);
+                $('a_start_time').value = v;
+            }
+            if (seedData.end_time || seedData.ends_at) {
+                const v = (seedData.end_time || seedData.ends_at || '').replace(' ', 'T').slice(0, 16);
+                $('a_end_time').value = v;
+            }
+            $('f_allow_late').checked = !!seedData.allow_late;
+            $('f_show_score').checked = !!seedData.show_score;
+            $('f_show_rank').checked = !!seedData.show_rank;
+            $('f_allow_resubmit').checked = (typeof seedData.allow_resubmit === 'undefined') ? true : !!seedData.allow_resubmit;
+            pickedProblemIds = (seedData.problem_ids || seedData.problems || []).map(x => typeof x === 'string' ? x : (x.id || x.problem_id));
+            renderPickedBox();
+        }
+        $('assignmentModalMask').style.display = 'flex';
+        setTimeout(() => $('a_title').focus(), 50);
+    }
+    function closeAssignmentModal() { $('assignmentModalMask').style.display = 'none'; }
+
+    function buildAssignmentPayload() {
+        return {
+            title: $('a_title').value.trim(),
+            class_id: $('a_class_id').value,
+            description: $('a_description').value,
+            start_time: $('a_start_time').value,
+            end_time: $('a_end_time').value,
+            problem_ids: pickedProblemIds,
+            flags: {
+                allow_late: $('f_allow_late').checked,
+                show_score: $('f_show_score').checked,
+                show_rank: $('f_show_rank').checked,
+                allow_resubmit: $('f_allow_resubmit').checked,
+            },
+        };
+    }
+
+    async function saveAssignment() {
+        const result = $('assignmentResult');
+        const payload = buildAssignmentPayload();
+        if (!payload.title) { result.className='auth-result auth-err'; result.textContent='请填写作业标题'; return; }
+        if (!payload.class_id) { result.className='auth-result auth-err'; result.textContent='请选择班级'; return; }
+        if (!payload.start_time) { result.className='auth-result auth-err'; result.textContent='请选择开始时间'; return; }
+        if (!payload.end_time) { result.className='auth-result auth-err'; result.textContent='请选择截止时间'; return; }
+        if (!pickedProblemIds.length) { result.className='auth-result auth-err'; result.textContent='请至少选择一道题目'; return; }
+        try {
+            const url = editingAssignmentId
+                ? `/api/assignments/${encodeURIComponent(editingAssignmentId)}`
+                : '/api/assignments';
+            const method = editingAssignmentId ? 'PUT' : 'POST';
+            const resp = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await resp.json();
+            if (data.code === 200) {
+                result.className = 'auth-result auth-ok';
+                result.textContent = editingAssignmentId ? '更新成功' : '创建成功';
+                showToast(editingAssignmentId ? '作业已更新' : '作业已创建', 'ok');
+                setTimeout(() => { closeAssignmentModal(); loadAssignments(); }, 500);
+            } else {
+                result.className = 'auth-result auth-err';
+                result.textContent = (data.msg || '操作失败') + ` (code=${data.code})`;
+                if (data.code === 401 || data.code === 403) setTimeout(() => openAuth('login'), 400);
+            }
+        } catch (e) {
+            result.className = 'auth-result auth-err';
+            result.textContent = '请求失败: ' + e.message;
+        }
+    }
+
+    /* ============================================================
+       【V6 · 作业列表卡片渲染】
+       功能：把原来的 7 列 <table> → 改为 aj-card-grid 响应式卡片网
+       卡片 6 要素：①图标+标题+状态badge ②班级/题数/作者 pill 组 ③开始时间
+                 ④截止时间+剩余天数badge ⑤80字说明预览 ⑥操作按钮
+       ============================================================ */
+    // ============ 作业列表 ============
+    function _matchKeyword(a, kw) {
+        if (!kw) return true;
+        const s = kw.toLowerCase();
+        return (a.title || '').toLowerCase().includes(s);
+    }
+
+    function renderAssignments(list) {
+        // -------- V6：卡片化输出，不再使用 <table> 挤成一团 --------
+        const wrap = $('assignmentListWrap');
+        $('totalCount').textContent = list.length;
+        const isAdmin = currentUser && currentUser.role === 'admin';
+        if (!list.length) {
+            wrap.innerHTML = `
+                <div class="empty-hint empty-hint-info">
+                    <div class="empty-hint-icon">&#128218;</div>
+                    <div class="empty-hint-title">没有匹配的作业</div>
+                    ${currentKeyword ? `<div class="empty-hint-desc">关键词：${escapeHtml(currentKeyword)}</div>` : (isAdmin ? '<div class="empty-hint-desc">点击右上角「新建作业」创建第一个作业</div>' : '<div class="empty-hint-desc">请等待老师发布新作业，或联系管理员确认您是否已加入班级</div>')}
+                </div>`;
+            return;
+        }
+
+        /* ---------- 工具函数组 ---------- */
+        // 日期补零 + 格式化（非法 Date 兜底取字符串前 16 位，防 NaN）
+        function _pad(n) { return n < 10 ? '0' + n : '' + n; }
+        function _fmt(t) {
+            if (!t) return '-';
+            const d = new Date(t);
+            if (isNaN(d.getTime())) return String(t).slice(0, 16);
+            return d.getFullYear() + '-' + _pad(d.getMonth()+1) + '-' + _pad(d.getDate()) + ' ' + _pad(d.getHours()) + ':' + _pad(d.getMinutes());
+        }
+        // 还剩几天（Math.ceil 向上取整，今天截止 = 0）
+        function _days_left(end_str) {
+            const et = new Date(end_str);
+            if (isNaN(et.getTime())) return null;
+            const now_ms = Date.now();
+            const diff_ms = et.getTime() - now_ms;
+            const days = Math.ceil(diff_ms / (1000*60*60*24));
+            return days;
+        }
+        // 作业状态：未设置/未开始(tag-info)/进行中(tag-ok)/已结束(tag-subtle)
+        function _status(a) {
+            const now = Date.now();
+            const st = new Date(a.start_time || a.starts_at || '').getTime();
+            const et = new Date(a.end_time || a.ends_at || '').getTime();
+            if (isNaN(et)) return {label:'未设置', cls:'tag tag-subtle'};
+            if (!isNaN(st) && now < st) return {label:'未开始', cls:'tag tag-info'};
+            if (now > et) return {label:'已结束', cls:'tag tag-subtle'};
+            return {label:'进行中', cls:'tag tag-ok'};
+        }
+        // 剩余天数彩色 badge（今天红/≤3天橙/其他灰/已结束灰）
+        function _days_badge(a) {
+            const d = _days_left(a.end_time || a.ends_at);
+            if (d == null) return '';
+            if (d < 0) return `<span class="tag tag-subtle" style="margin-left:8px;">已结束 ${-d} 天</span>`;
+            if (d === 0) return `<span class="tag tag-err" style="margin-left:8px;">今天截止</span>`;
+            if (d <= 3) return `<span class="tag tag-warn" style="margin-left:8px;">还剩 ${d} 天</span>`;
+            return `<span class="tag tag-subtle" style="margin-left:8px;">还剩 ${d} 天</span>`;
+        }
+
+        /* ---------- 单卡渲染：6 要素分块 ---------- */
+        const cards = list.map(a => {
+            const pc = a.problem_count ?? (a.problem_ids||a.problems||[]).length ?? 0;
+            const st = _status(a);
+            // admin 三按钮：详情/编辑/删除；学生单按钮：▶开始/查看
+            const adminBtns = `
+                <button class="btn btn-secondary btn-sm" type="button" onclick="openAssignmentDetail('${a.id}')">&#128065; 详情</button>
+                <button class="btn btn-accent btn-sm" type="button" onclick="editAssignment('${a.id}')">&#9998;&#65039; 编辑</button>
+                <button class="btn btn-sm" type="button" style="background:#ffebee;color:#c62828;" onclick="deleteAssignment('${a.id}')">&#128465;&#65039; 删除</button>
+            `;
+            const userBtns = `
+                <button class="btn btn-primary btn-sm" type="button" onclick="openAssignmentDetail('${a.id}')">&#9654; 开始/查看</button>
+            `;
+            const className = a.class_name || a.class_id || '未指定班级';
+            const desc = (a.description || a.desc || '').toString();
+            const descShort = desc.length > 80 ? desc.slice(0,78) + '…' : desc;
+            return `
+            <div class="aj-card">
+                <!-- ① 卡头：📚蓝图标 + 标题 + 右状态 badge -->
+                <div class="aj-card-header">
+                    <div class="aj-card-title">
+                        <span class="aj-card-icon" style="color:#1976d2;">&#128218;</span>
+                        <span class="aj-card-title-text" title="${escapeHtml(a.title||'')}">${escapeHtml(a.title || '-')}</span>
+                    </div>
+                    <span class="${st.cls}">${st.label}</span>
+                </div>
+                <!-- ② pill 组：班级🏫 / 题数📄 / 作者👤 -->
+                <div class="aj-pill-group stat-pills" style="margin:6px 0 10px;">
+                    <span class="stat-pill">&#127979; ${escapeHtml(String(className))}</span>
+                    <span class="stat-pill">&#128196; ${pc} 题</span>
+                    ${a.author || a.created_by ? `<span class="stat-pill">&#128100; ${escapeHtml(String(a.author || a.created_by))}</span>` : ''}
+                </div>
+                <!-- ③ 时间行：开始 / 截止 + 剩余天数 badge -->
+                <div class="aj-time-row">
+                    <span class="aj-time-label">开始</span>
+                    <span class="aj-time-value">${escapeHtml(_fmt(a.start_time || a.starts_at))}</span>
+                </div>
+                <div class="aj-time-row">
+                    <span class="aj-time-label">截止</span>
+                    <span class="aj-time-value">${escapeHtml(_fmt(a.end_time || a.ends_at))} ${_days_badge(a)}</span>
+                </div>
+                <!-- ④ 说明预览 80 字（左蓝条 + hover tooltip 显示完整） -->
+                ${descShort ? `<div class="aj-desc" title="${escapeHtml(desc)}">${escapeHtml(descShort)}</div>` : ''}
+                <!-- ⑤ 操作按钮条（admin 3 按钮 / 学生 1 按钮） -->
+                <div class="aj-action-row">
+                    ${isAdmin ? adminBtns : userBtns}
+                </div>
+            </div>`;
+        }).join('');
+
+        wrap.innerHTML = `<div class="aj-card-grid">${cards}</div>`;
+    }
+
+    async function loadAssignments() {
+        const wrap = $('assignmentListWrap');
+        wrap.innerHTML = `
+            <div style="text-align:center;padding:40px;color:#999;">
+                <div style="font-size:36px;margin-bottom:8px;">&#9203;</div>
+                正在加载作业列表...
+            </div>`;
+        try {
+            const resp = await fetch('/api/assignments');
+            const data = await resp.json();
+            if (data.code === 200) {
+                allAssignments = (data.data || []).map(x => Object.assign({}, x, {
+                    id: x.assignment_id ?? x.id,
+                    title: x.title ?? x.assignment_name ?? x.assignment_title ?? '-',
+                    class_id: x.class_id ?? x.audience_class_id ?? null,
+                    class_name: x.class_name ?? (Array.isArray(x.audience_classes) ? x.audience_classes.map(id => '#' + id).join(',') : (x.audience_classes || '')),
+                    start_time: x.starts_at ?? x.start_at ?? x.start_time ?? '-',
+                    end_time: x.ends_at ?? x.due_at ?? x.end_time ?? '-',
+                    problem_count: x.problem_count ?? (Array.isArray(x.problem_ids) ? x.problem_ids.length : 0),
+                }));
+                const filtered = allAssignments.filter(a => _matchKeyword(a, currentKeyword));
+                renderAssignments(filtered);
+            } else if (data.code === 401 || data.code === 403) {
+                showToast(data.msg || '请先登录', 'err');
+                setTimeout(() => openAuth('login'), 300);
+            } else {
+                showToast('加载失败: ' + (data.msg || ''), 'err');
+            }
+        } catch (e) {
+            showToast('请求失败: ' + e.message, 'err');
+        }
+    }
+
+    async function editAssignment(id) {
+        try {
+            const resp = await fetch(`/api/assignments/${encodeURIComponent(id)}`);
+            const data = await resp.json();
+            if (data.code === 200) {
+                openAssignmentModal('edit', data.data);
+            } else {
+                showToast('加载作业详情失败: ' + (data.msg || ''), 'err');
+                if (data.code === 401 || data.code === 403) openAuth('login');
+            }
+        } catch (e) {
+            showToast('请求失败: ' + e.message, 'err');
+        }
+    }
+
+    async function deleteAssignment(id) {
+        const title = (allAssignments.find(a => a.id === id) || {}).title || id;
+        if (!confirm(`确定要删除作业「${title}」(id=${id}) 吗？此操作不可恢复！`)) return;
+        try {
+            const resp = await fetch(`/api/assignments/${encodeURIComponent(id)}`, { method: 'DELETE' });
+            const data = await resp.json();
+            if (data.code === 200) {
+                showToast(`已删除作业 ${title}`, 'ok');
+                loadAssignments();
+            } else {
+                showToast('删除失败: ' + (data.msg || '') + ` (code=${data.code})`, 'err');
+                if (data.code === 401 || data.code === 403) openAuth('login');
+            }
+        } catch (e) {
+            showToast('请求失败: ' + e.message, 'err');
+        }
+    }
+
+    // ============ 作业详情 ============
+    async function openAssignmentDetail(id) {
+        currentDetailAid = id;
+        const a = allAssignments.find(x => x.id === id) || {};
+        $('assignmentDetailTitle').innerHTML = `&#128218; 作业详情：<span style="font-weight:500;color:#333;">${escapeHtml(a.title || id)}</span>`;
+        $('assignmentDetailMask').style.display = 'flex';
+        $('detailInfoBox').innerHTML = '<div style="color:#999;">&#9203; 加载中...</div>';
+        $('detailProblemsWrap').innerHTML = '<div style="padding:12px;color:#999;">&#9203; 加载中...</div>';
+        $('detailMatrixWrap').innerHTML = '<div style="padding:24px;color:#999;text-align:center;">&#9203; 加载中...</div>';
+        try {
+            const [resp1, resp2] = await Promise.all([
+                fetch(`/api/assignments/${encodeURIComponent(id)}`),
+                fetch(`/api/assignments/${encodeURIComponent(id)}/matrix`).catch(()=>({json:async()=>({})}))
+            ]);
+            const data = await resp1.json();
+            let matrixData = {};
+            try { matrixData = (await (resp2.json ? resp2.json() : {})).data || {}; } catch(e){}
+            if (data.code === 200) {
+                const merged = Object.assign({}, data.data || {});
+                if (matrixData && Object.keys(matrixData).length) {
+                    merged.__matrix = matrixData;
+                }
+                renderAssignmentDetail(merged);
+            } else {
+                $('detailInfoBox').innerHTML = '<div style="color:#c62828;">加载失败：' + escapeHtml(data.msg || '') + '</div>';
+            }
+        } catch (e) {
+            $('detailInfoBox').innerHTML = '<div style="color:#c62828;">请求失败：' + escapeHtml(e.message) + '</div>';
+        }
+    }
+    function closeAssignmentDetail() { $('assignmentDetailMask').style.display = 'none'; currentDetailAid = null; }
+
+    function renderAssignmentDetail(d) {
+        const mat = d.__matrix || {};
+        const rawAssign = mat.assignment || d.assignment || d;
+        const a = Object.assign({}, rawAssign, {
+            id: rawAssign.id ?? rawAssign.assignment_id ?? null,
+        });
+        const rawProblems = mat.problems || d.problems || a.problems || a.problem_ids || a.problem_order || [];
+        const problems = rawProblems.map(p => {
+            if (typeof p === 'string') return {problem_id:p, title:p, points:0};
+            return Object.assign({problem_id: p.id||p.problem_id, title:p.title||p.id||p.problem_id, points:p.points||0}, p);
+        }).filter(p=>p.problem_id);
+        const users = mat.users || mat.rows || d.users || d.members || [];
+        const matrix = mat.matrix || d.matrix || d.scores || {};
+        $('detailInfoBox').innerHTML = `
+            <div style="font-size:13px;line-height:1.8;">
+                <b>标题：</b>${escapeHtml(a.title || '-')} &nbsp;|&nbsp;
+                <b>班级：</b>${escapeHtml(a.class_name || a.class_id || '-')} &nbsp;|&nbsp;
+                <b>时间窗：</b>${escapeHtml(a.start_time || a.starts_at || '-')} ~ ${escapeHtml(a.end_time || a.ends_at || '-')}
+                <br>
+                <b>题目数：</b>${problems.length} &nbsp;|&nbsp;
+                <b>成员数：</b>${users.length}
+                ${a.description ? `<br><b>说明：</b>${escapeHtml(a.description)}` : ''}
+            </div>`;
+        const isAdmin = currentUser && currentUser.role === 'admin';
+        if (!problems.length) {
+            $('detailProblemsWrap').innerHTML = '<div style="padding:12px;color:#999;">无题目</div>';
+        } else {
+            const rowsHtml = problems.map((p, i) => {
+                const pid = typeof p === 'string' ? p : (p.id || p.problem_id);
+                const ptitle = typeof p === 'string' ? p : (p.title || pid);
+                const pts = (typeof p === 'object' && p.points) ? p.points : (a.problem_order && a.problem_order[i] ? a.problem_order[i].points : 0);
+                const judgeUrl = `/judge/${encodeURIComponent(pid)}?assignment_id=${encodeURIComponent(a.id)}`;
+                return `<tr onclick="window.location.href='${judgeUrl}'" style="cursor:pointer;">
+                    <td style="width:60px;text-align:center;"><b>${i + 1}</b></td>
+                    <td style="font-weight:600;">${escapeHtml(pid)}</td>
+                    <td>${escapeHtml(ptitle)}</td>
+                    <td style="width:80px;text-align:center;"><span class="tag tag-subtle">${pts} 分</span></td>
+                </tr>`;
+            }).join('');
+            $('detailProblemsWrap').innerHTML = `
+                <div style="border:1px solid #eee;border-radius:10px;overflow:hidden;">
+                <table class="data-table">
+                    <thead><tr><th style="width:60px;text-align:center;">序号</th><th>题目ID</th><th>题目标题</th><th style="width:80px;text-align:center;">分值</th></tr></thead>
+                    <tbody>${rowsHtml}</tbody>
+                </table></div>`;
+        }
+        renderScoreMatrix(users, problems, matrix, isAdmin);
+    }
+
+    function renderScoreMatrix(users, problems, matrix, isAdmin) {
+        const wrap = $('detailMatrixWrap');
+        if (!users.length) {
+            wrap.innerHTML = '<div style="padding:24px;text-align:center;color:#999;">暂无成员数据</div>';
+            return;
+        }
+        const pids = problems.map(p => typeof p === 'string' ? p : (p.id || p.problem_id));
+        const head = `
+            <table class="data-table"><thead><tr>
+                <th style="position:sticky;left:0;background:#f5f7fa;z-index:2;">学生</th>
+                ${pids.map(pid => `<th>${escapeHtml(pid)}</th>`).join('')}
+                <th>总计</th>
+            </tr></thead>
+            <tbody>
+                ${users.map(u => {
+                    const username = u.username || u.name || u.id;
+                    let total = 0;
+                    const cells = pids.map(pid => {
+                        const key = `${username}:${pid}`;
+                        const score = (matrix && (matrix[key] != null)) ? matrix[key] :
+                                      (u.scores && u.scores[pid] != null ? u.scores[pid] : '-');
+                        const sNum = typeof score === 'number' ? score : (score === '-' || score == null ? 0 : parseFloat(score) || 0);
+                        total += sNum;
+                        return `<td style="text-align:center;">${score}</td>`;
+                    }).join('');
+                    return `<tr>
+                        <td style="position:sticky;left:0;background:#fff;"><b>${escapeHtml(username)}</b></td>
+                        ${cells}
+                        <td style="text-align:center;font-weight:600;">${total}</td>
+                    </tr>`;
+                }).join('')}
+            </tbody></table>`;
+        wrap.innerHTML = head;
+    }
+
+    async function exportMatrixCSV() {
+        if (!currentDetailAid) return;
+        try {
+            const resp = await fetch(`/api/assignments/${encodeURIComponent(currentDetailAid)}/matrix.csv`);
+            if (resp.ok) {
+                const blob = await resp.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `assignment_${currentDetailAid}_matrix.csv`;
+                a.click();
+                URL.revokeObjectURL(url);
+                showToast('成绩矩阵已导出', 'ok');
+            } else {
+                showToast('导出失败：HTTP ' + resp.status, 'err');
+            }
+        } catch (e) {
+            showToast('导出失败: ' + e.message, 'err');
+        }
+    }
+
+    // ============ 初始化 ============
+    function init() {
+        renderTopUser();
+
+        const isAdmin = currentUser && currentUser.role === 'admin';
+        if (!currentUser) {
+            showToast('请先登录', 'warn');
+            setTimeout(() => openAuth('login'), 300);
+        } else {
+            loadAssignments();
+        }
+
+        if (!isAdmin) {
+            const adminBar = $('adminToolbarRight');
+            if (adminBar) adminBar.innerHTML = `<button id="refreshBtn" class="btn btn-sm" type="button" style="background:#f5f5f5;color:#555;">&#128260; 刷新</button>`;
+        }
+
+        $('searchBtn').onclick = () => {
+            currentKeyword = $('keywordInput').value.trim();
+            loadAssignments();
+        };
+        $('resetSearchBtn').onclick = () => {
+            $('keywordInput').value = '';
+            currentKeyword = '';
+            loadAssignments();
+        };
+        $('keywordInput').addEventListener('keydown', e => {
+            if (e.key === 'Enter') $('searchBtn').click();
+        });
+
+        $('refreshBtn') && ($('refreshBtn').onclick = loadAssignments);
+        $('newAssignmentBtn') && ($('newAssignmentBtn').onclick = () => openAssignmentModal('new'));
+        $('exportMatrixBtn') && ($('exportMatrixBtn').onclick = exportMatrixCSV);
+
+        $('assignmentCloseBtn').onclick = closeAssignmentModal;
+        $('assignmentModalMask').addEventListener('click', e => {
+            if (e.target.id === 'assignmentModalMask') closeAssignmentModal();
+        });
+        $('assignmentCancelBtn').onclick = closeAssignmentModal;
+        $('assignmentSaveBtn').onclick = saveAssignment;
+
+        $('assignmentDetailCloseBtn').onclick = closeAssignmentDetail;
+        $('assignmentDetailMask').addEventListener('click', e => {
+            if (e.target.id === 'assignmentDetailMask') closeAssignmentDetail();
+        });
+        $('assignmentDetailCancelBtn').onclick = closeAssignmentDetail;
+
+        // 认证弹窗复用绑定
+        $('authCloseBtn').onclick = closeAuth;
+        $('authModalMask').addEventListener('click', e => {
+            if (e.target.id === 'authModalMask') closeAuth();
+        });
+        $('authToggle').onclick = () => openAuth(authMode === 'login' ? 'register' : 'login');
+        $('authSubmit').onclick = submitAuth;
+        $('authPassword').addEventListener('keydown', e => {
+            if (e.key === 'Enter') submitAuth();
+        });
+        $('authUsername').addEventListener('keydown', e => {
+            if (e.key === 'Enter') $('authPassword').focus();
+        });
+        toggleEye('eyePwd', 'authPassword', 'eyePwdIcon');
+        toggleEye('eyePwd2', 'authPassword2', 'eyePwd2Icon');
+        $('authPassword').addEventListener('input', () => {
+            if (authMode === 'register') renderStrength($('authPassword').value, $('authPassword2').value);
+        });
+        $('authPassword2').addEventListener('input', () => {
+            renderStrength($('authPassword').value, $('authPassword2').value);
+        });
+        $('authPassword2').addEventListener('keydown', e => {
+            if (e.key === 'Enter') submitAuth();
+        });
+    }
+
+    document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>

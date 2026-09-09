@@ -10,9 +10,10 @@ from functools import wraps
 from typing import Optional, List, Dict, Any, Tuple
 
 from fastapi import FastAPI, Request, Response, HTTPException, Depends
-from fastapi.responses import JSONResponse, PlainTextResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, PlainTextResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.staticfiles import StaticFiles
+from starlette.templating import Jinja2Templates
 import uvicorn
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -37,6 +38,8 @@ from userdb import (
 app = FastAPI()
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_TEMPLATES_DIR = os.path.join(BASE_DIR, 'templates')
+templates = Jinja2Templates(directory=_TEMPLATES_DIR)
 app.mount('/static', StaticFiles(directory=os.path.join(BASE_DIR, 'static')), name='static')
 
 
@@ -111,6 +114,26 @@ async def exception_handler(request: Request, exc: Exception):
         f'500 Server Error\n{exc!r}\n\n{tb}',
         status_code=500,
     )
+
+
+def static_url(filename: str) -> str:
+    return '/static/' + filename.lstrip('/')
+
+
+def page_url(name: str) -> str:
+    if name == 'index':
+        return '/'
+    if name == 'users':
+        return '/users'
+    if name == 'problems':
+        return '/problems'
+    if name == 'submissions':
+        return '/submissions'
+    return '/'
+
+
+templates.env.globals['static_url'] = static_url
+templates.env.globals['page_url'] = page_url
 
 
 SESSION_COOKIE_NAME = 'oj_session_id'
@@ -233,6 +256,263 @@ def _user_public_viewer(user, viewer=None):
     if is_self or is_admin:
         pass
     return pub
+
+
+# ========================== 页面路由 ==========================
+
+def _render_html(template_name: str, context: dict) -> HTMLResponse:
+    tpl = templates.get_template(template_name)
+    html = tpl.render(context)
+    return HTMLResponse(html)
+
+
+@app.get('/', response_class=HTMLResponse)
+async def index(request: Request):
+    problems = await _load_problems_brief_view()
+    user = await current_user(request)
+    user_info = None
+    if user:
+        user_info = {
+            'user_id': str(user.user_id),
+            'username': user.username,
+            'role': user.role,
+            'is_admin': user.role == USER_ROLE_ADMIN,
+        }
+    return _render_html(
+        'index.html',
+        {'request': request, 'problems': problems, 'current_user': user_info},
+    )
+
+
+@app.get('/users', response_class=HTMLResponse)
+async def page_users(request: Request):
+    user = await current_user(request)
+    if not user:
+        return RedirectResponse(url='/')
+    if user.role != USER_ROLE_ADMIN:
+        return RedirectResponse(url='/')
+    problems = await _load_problems_brief_view()
+    user_info = {
+        'user_id': str(user.user_id),
+        'username': user.username,
+        'role': user.role,
+        'is_admin': True,
+    }
+    return _render_html(
+        'users.html',
+        {'request': request, 'problems': problems, 'current_user': user_info},
+    )
+
+
+@app.get('/problems', response_class=HTMLResponse)
+async def page_problems(request: Request):
+    user = await current_user(request)
+    if not user:
+        return RedirectResponse(url='/')
+    is_admin = user.role == USER_ROLE_ADMIN
+    problems = await _load_problems_brief_view()
+    user_info = {
+        'user_id': str(user.user_id),
+        'username': user.username,
+        'role': user.role,
+        'is_admin': is_admin,
+    }
+    return _render_html(
+        'problems.html',
+        {'request': request, 'problems': problems, 'current_user': user_info},
+    )
+
+
+@app.get('/submissions', response_class=HTMLResponse)
+async def page_submissions(request: Request):
+    user = await current_user(request)
+    if not user:
+        return RedirectResponse(url='/')
+    problems = await _load_problems_brief_view()
+    user_info = {
+        'user_id': str(user.user_id),
+        'username': user.username,
+        'role': user.role,
+        'is_admin': user.role == USER_ROLE_ADMIN,
+    }
+    return _render_html(
+        'submissions.html',
+        {'request': request, 'problems': problems, 'current_user': user_info},
+    )
+
+
+@app.get('/classes', response_class=HTMLResponse)
+async def page_classes(request: Request):
+    user = await current_user(request)
+    if not user:
+        return RedirectResponse(url='/')
+    is_admin = user.role == USER_ROLE_ADMIN
+    problems = await _load_problems_brief_view()
+    user_info = {
+        'user_id': str(user.user_id),
+        'username': user.username,
+        'role': user.role,
+        'is_admin': is_admin,
+    }
+    ctx_data = {
+        'is_admin': is_admin,
+        'my_user_id': str(user.user_id),
+        'my_classes_json': json.dumps(await asyncio.to_thread(db.get_user_classes, user.user_id), ensure_ascii=False),
+    }
+    return _render_html(
+        'classes.html',
+        {'request': request, 'problems': problems, 'current_user': user_info,
+         'ctx': ctx_data},
+    )
+
+
+@app.get('/assignments', response_class=HTMLResponse)
+async def page_assignments(request: Request):
+    user = await current_user(request)
+    if not user:
+        return RedirectResponse(url='/')
+    is_admin = user.role == USER_ROLE_ADMIN
+    problems = await _load_problems_brief_view()
+    user_info = {
+        'user_id': str(user.user_id),
+        'username': user.username,
+        'role': user.role,
+        'is_admin': is_admin,
+    }
+    return _render_html(
+        'assignments.html',
+        {'request': request, 'problems': problems, 'current_user': user_info,
+         'ctx': {'is_admin': is_admin, 'my_user_id': str(user.user_id)}},
+    )
+
+
+@app.get('/assignments/{assignment_id}', response_class=HTMLResponse)
+async def page_assignment_detail(request: Request, assignment_id: int):
+    user = await current_user(request)
+    if not user:
+        return RedirectResponse(url='/')
+    is_admin = user.role == USER_ROLE_ADMIN
+    a = await asyncio.to_thread(db.get_assignment, int(assignment_id))
+    if not a:
+        return RedirectResponse(url='/assignments')
+    if not is_admin and (not a['published'] or not db._assignment_is_audience(a, int(user.user_id))):
+        return RedirectResponse(url='/assignments')
+    problems = await _load_problems_brief_view()
+    user_info = {
+        'user_id': str(user.user_id),
+        'username': user.username,
+        'role': user.role,
+        'is_admin': is_admin,
+    }
+    return _render_html(
+        'assignments.html',
+        {'request': request, 'problems': problems, 'current_user': user_info,
+         'ctx': {'is_admin': is_admin, 'my_user_id': str(user.user_id),
+                 'assignment_id': int(assignment_id), 'assignment_detail': a}},
+    )
+
+
+@app.get('/exams', response_class=HTMLResponse)
+async def page_exams(request: Request):
+    user = await current_user(request)
+    if not user:
+        return RedirectResponse(url='/')
+    is_admin = user.role == USER_ROLE_ADMIN
+    problems = await _load_problems_brief_view()
+    user_info = {
+        'user_id': str(user.user_id),
+        'username': user.username,
+        'role': user.role,
+        'is_admin': is_admin,
+    }
+    return _render_html(
+        'exams.html',
+        {'request': request, 'problems': problems, 'current_user': user_info,
+         'ctx': {'is_admin': is_admin, 'my_user_id': str(user.user_id)}},
+    )
+
+
+@app.get('/exams/{exam_id}', response_class=HTMLResponse)
+async def page_exam_detail(request: Request, exam_id: int):
+    user = await current_user(request)
+    if not user:
+        return RedirectResponse(url='/')
+    is_admin = user.role == USER_ROLE_ADMIN
+    e = await asyncio.to_thread(db.get_exam, int(exam_id))
+    if not e:
+        return RedirectResponse(url='/exams')
+    if not is_admin and not db._exam_is_audience(e, int(user.user_id)):
+        return RedirectResponse(url='/exams')
+    problems = await _load_problems_brief_view()
+    user_info = {
+        'user_id': str(user.user_id),
+        'username': user.username,
+        'role': user.role,
+        'is_admin': is_admin,
+    }
+    return _render_html(
+        'exams.html',
+        {'request': request, 'problems': problems, 'current_user': user_info,
+         'ctx': {'is_admin': is_admin, 'my_user_id': str(user.user_id),
+                 'exam_id': int(exam_id), 'exam_detail': e}},
+    )
+
+
+@app.get('/judge/{problem_id}', response_class=HTMLResponse)
+async def page_judge(request: Request, problem_id: str,
+                     assignment_id: Optional[int] = None,
+                     exam_id: Optional[int] = None):
+    user = await current_user(request)
+    if not user:
+        toast = '请先登录后判题'
+        return RedirectResponse(url='/?toast=' + toast)
+    problem = await asyncio.to_thread(db.get_problem_full_with_perms, problem_id)
+    if not problem:
+        return RedirectResponse(url='/')
+    problems_brief = await _load_problems_brief_view()
+    enabled_languages = await asyncio.to_thread(db.list_enabled_languages)
+    user_info = {
+        'user_id': str(user.user_id),
+        'username': user.username,
+        'role': user.role,
+        'is_admin': user.role == USER_ROLE_ADMIN,
+    }
+    assignment_ctx = None
+    exam_ctx = None
+    if assignment_id is not None:
+        a = await asyncio.to_thread(db.get_assignment, int(assignment_id))
+        if a:
+            problem_ids = {str(p.get('problem_id') or '') for p in a['problem_order']}
+            if str(problem_id) in problem_ids:
+                if user.role == USER_ROLE_ADMIN or (a['published'] and db._assignment_is_audience(a, int(user.user_id))):
+                    assignment_ctx = a
+    if exam_id is not None:
+        e = await asyncio.to_thread(db.get_exam, int(exam_id))
+        if e:
+            problem_ids = {str(p.get('problem_id') or '') for p in e['problem_order']}
+            if str(problem_id) in problem_ids:
+                if user.role == USER_ROLE_ADMIN or db._exam_is_audience(e, int(user.user_id)):
+                    exam_ctx = e
+                    if assignment_ctx is not None:
+                        assignment_ctx = None
+    custom_override = None
+    if assignment_ctx is not None:
+        custom_override = bool(assignment_ctx['flags'].get('allow_custom_debug', True))
+    if exam_ctx is not None:
+        custom_override = bool(exam_ctx['flags'].get('allow_custom_debug', False))
+    if custom_override is not None:
+        problem = dict(problem)
+        problem['allow_user_custom_debug_cases'] = 1 if custom_override else 0
+    context = {
+        'request': request,
+        'problems': problems_brief,
+        'current_user': user_info,
+        'problem': problem,
+        'enabled_languages': enabled_languages,
+        'assignment_ctx': assignment_ctx,
+        'exam_ctx': exam_ctx,
+    }
+    return _render_html('judge.html', context)
 
 
 # ========================== 用户 API ==========================
@@ -2113,6 +2393,38 @@ try:
     _ensure_ai_db_tables()
 except Exception as _e_init:
     print('[AI] init tables FAIL:', safe_log(_e_init), file=sys.stderr, flush=True)
+
+
+# ---------- 页面路由 /ai 和 /ai_config ----------
+@app.get('/ai', response_class=HTMLResponse)
+async def page_ai(request: Request):
+    user = await current_user(request)
+    if not user:
+        return RedirectResponse(url='/')
+    cfg = _ai_load_config()
+    allow_admin = user.role == USER_ROLE_ADMIN
+    allow_user = bool(cfg.get('allow_user_problem_create'))
+    if not allow_admin and not allow_user:
+        return _render_html('problems.html', {
+            'request': request,
+            'current_user': type('U',(),{'role':user.role,'is_admin':allow_admin,'username':user.username,'user_id':user.user_id})(),
+            'login_banner_msg': 'AI 智能命题仅管理员可用，请联系管理员开通或前往「⚙️ AI配置」开启普通用户权限。',
+        })
+    return _render_html('ai_create.html', {
+        'request': request,
+        'current_user': user,
+    })
+
+
+@app.get('/ai_config', response_class=HTMLResponse)
+async def page_ai_config(request: Request):
+    user = await current_user(request)
+    if not user or user.role != USER_ROLE_ADMIN:
+        return RedirectResponse(url='/')
+    return _render_html('ai_config.html', {
+        'request': request,
+        'current_user': user,
+    })
 
 
 # ---------- FR-A: 配置 4 API ----------
