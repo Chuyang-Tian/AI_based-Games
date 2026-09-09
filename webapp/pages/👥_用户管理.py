@@ -4,6 +4,7 @@
 import os
 import sys
 
+import math
 import pandas as pd
 import streamlit as st
 
@@ -14,6 +15,7 @@ from common import (
     current_user,
     ensure_init,
     is_admin,
+    render_pagination_controls,
     render_subheader,
     render_topbar,
     require_admin_error,
@@ -63,6 +65,11 @@ code, data, err = api('GET', '/api/users', params=params)
 payload = data.get('data') if isinstance(data, dict) else {}
 users = payload.get('users') if isinstance(payload, dict) else []
 total = int(payload.get('total', 0) or 0) if isinstance(payload, dict) else 0
+total_pages = max(1, math.ceil(total / page_size)) if total else 1
+page = min(max(1, int(page or 1)), total_pages)
+if int(st.session_state.get('users_page', 1) or 1) != page:
+    st.session_state['users_page'] = page
+    st.rerun()
 
 with st.container(border=True):
     st.subheader('创建管理员账号', divider=False)
@@ -127,14 +134,10 @@ if rows:
                 st.rerun()
             st.error(f'更新失败：{update_data.get("msg") if update_data else update_err}')
 
-pager_left, pager_right, pager_info = st.columns([2, 2, 6])
-with pager_left:
-    if st.button('上一页', use_container_width=True, disabled=page <= 1):
-        st.session_state['users_page'] = max(1, page - 1)
-        st.rerun()
-with pager_right:
-    if st.button('下一页', use_container_width=True, disabled=page * page_size >= total):
-        st.session_state['users_page'] = page + 1
-        st.rerun()
-with pager_info:
-    st.caption(f'当前第 {page} 页，每页 {page_size} 条。')
+render_pagination_controls(
+    'users_page',
+    page,
+    total_pages,
+    page_size,
+    total_items=total,
+)

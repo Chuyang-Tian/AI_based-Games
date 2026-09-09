@@ -4,7 +4,7 @@ gatherUsageStats = false
 [server]
 headless = true
 port = 8501
-fileWatcherType = "none"
+fileWatcherType = "auto"
 enableCORS = false
 enableXsrfProtection = false
 

@@ -130,6 +130,8 @@ class CodeExecutor:
         if isinstance(language, dict):
             raw_name = str(language.get('name') or 'python').strip().lower()
             built_in = self._normalize_language_spec(raw_name)
+            if raw_name in ('python', 'python3'):
+                return built_in
             compile_cmd = language.get('compile_cmd') if language.get('compile_cmd') else built_in.get('compile_cmd')
             return {
                 'name': raw_name,

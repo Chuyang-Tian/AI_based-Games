@@ -62,7 +62,7 @@ if assignment_id:
     if my_status:
         with st.container(border=True):
             s1, s2, s3 = st.columns(3)
-            s1.metric('当前得分', my_status.get('score', 0))
+            s1.metric('当前得分', my_status.get('score', my_status.get('total_score', 0)))
             s2.metric('已完成题数', my_status.get('solved_count', 0))
             s3.metric('提交次数', my_status.get('submit_count', 0))
 
@@ -76,8 +76,10 @@ if assignment_id:
             with st.container(border=True):
                 left, mid, right = st.columns([6, 2, 2])
                 with left:
-                    st.markdown(f"**{pid} · {item.get('title') or ''}**")
-                    st.caption(f"分值：{item.get('points', 0)}  |  顺序：{item.get('order_index', 0)}")
+                    title_text = item.get('title') or pid or '未命名题目'
+                    order_value = item.get('order') or item.get('order_index') or '-'
+                    st.markdown(f"**{pid} · {title_text}**")
+                    st.caption(f"分值：{item.get('points', 0)}  |  顺序：{order_value}")
                 with mid:
                     render_page_link('题目详情', page_url('problem_detail', id=pid))
                 with right:
@@ -129,3 +131,43 @@ else:
                     st.caption(f"题目数：{item.get('problem_count')}  |  总分：{item.get('total_points')}  |  截止：{item.get('due_at') or '-'}")
                 with right:
                     render_page_link('查看作业', page_url('assignments', id=item.get('assignment_id')), primary=True)
+
+    if is_admin():
+        classes_code, classes_data, _ = api('GET', '/api/classes')
+        classes = classes_data.get('data') if classes_code == 200 and isinstance(classes_data, dict) else []
+        probs_code, probs_data, _ = api('GET', '/api/problems')
+        problems = probs_data.get('data') if probs_code == 200 and isinstance(probs_data, dict) else []
+        class_options = {f"#{item.get('class_id')} · {item.get('class_name')}": int(item.get('class_id')) for item in classes or []}
+        problem_options = {
+            f"{item.get('id')} · {item.get('title') or item.get('id')}": str(item.get('id'))
+            for item in problems or []
+        }
+        with st.expander('创建作业', expanded=False):
+            with st.form('assignment_create_form'):
+                title = st.text_input('作业标题')
+                description = st.text_area('作业说明', height=100)
+                selected_classes = st.multiselect('面向班级', list(class_options.keys()))
+                selected_problems = st.multiselect('题目列表', list(problem_options.keys()))
+                point_each = st.number_input('每题分值', min_value=1, max_value=100, value=50, step=5)
+                start_at = st.text_input('开始时间', value='2020-01-01 00:00:00')
+                due_at = st.text_input('截止时间', value='2099-12-31 23:59:59')
+                published = st.checkbox('立即发布', value=True)
+                created = st.form_submit_button('创建作业', type='primary', use_container_width=True)
+            if created:
+                payload = {
+                    'title': title.strip(),
+                    'description': description,
+                    'audience_classes': [class_options[key] for key in selected_classes],
+                    'problem_order': [
+                        {'problem_id': problem_options[key], 'points': int(point_each), 'order': idx + 1}
+                        for idx, key in enumerate(selected_problems)
+                    ],
+                    'start_at': start_at.strip() or None,
+                    'due_at': due_at.strip() or None,
+                    'published': published,
+                }
+                create_code, create_data, create_err = api('POST', '/api/assignments', payload)
+                if create_code == 200:
+                    toast_safe('作业创建成功', 'ok')
+                    st.rerun()
+                st.error(f'创建失败：{create_data.get("msg") if create_data else create_err}')

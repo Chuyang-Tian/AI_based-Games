@@ -233,6 +233,20 @@ def _get_language_config(lang_name: str) -> dict:
     return {'name': str(lang_name or 'python').strip().lower()}
 
 
+def _pick_resource_limit(override_value, problem_value, language_value, fallback_value, caster):
+    for candidate in (override_value, problem_value, language_value, fallback_value):
+        if candidate is None:
+            continue
+        try:
+            value = caster(candidate)
+            if value <= 0:
+                continue
+            return value
+        except Exception:
+            continue
+    return caster(fallback_value)
+
+
 def _guess_code_language(code: str) -> Optional[str]:
     text = str(code or '').strip()
     if not text:
@@ -249,6 +263,8 @@ def _guess_code_language(code: str) -> Optional[str]:
 
 def _normalize_submission_language(language: str, code: str, lang_names: list[str]) -> tuple[str, Optional[str]]:
     selected = str(language or 'python').strip().lower()
+    if selected in lang_names:
+        return selected, None
     guessed = _guess_code_language(code)
     if guessed and guessed in lang_names and guessed != selected:
         return guessed, selected
@@ -653,20 +669,21 @@ async def _do_judge_bg(sid, pid, lang_name, code, uid,
                 case_id=i,
                 is_sample=not bool(raw_testcases),
             ))
-        if time_limit_override is not None:
-            try:
-                time_limit = float(time_limit_override)
-            except Exception:
-                time_limit = float(problem.get('time_limit', 1.0))
-        else:
-            time_limit = float(problem.get('time_limit', 1.0))
-        if memory_limit_override is not None:
-            try:
-                memory_limit = int(memory_limit_override)
-            except Exception:
-                memory_limit = int(problem.get('memory_limit', 128))
-        else:
-            memory_limit = int(problem.get('memory_limit', 128))
+        lang_config = await asyncio.to_thread(_get_language_config, lang_name)
+        time_limit = _pick_resource_limit(
+            time_limit_override,
+            problem.get('time_limit'),
+            lang_config.get('default_time_limit'),
+            1.0,
+            float,
+        )
+        memory_limit = _pick_resource_limit(
+            memory_limit_override,
+            problem.get('memory_limit'),
+            lang_config.get('default_memory_limit'),
+            128,
+            int,
+        )
         compare_mode = compare_mode_override if isinstance(compare_mode_override, str) else 'exact'
         if compare_mode not in ('exact', 'trim', 'numeric'):
             compare_mode = 'exact'
@@ -675,7 +692,6 @@ async def _do_judge_bg(sid, pid, lang_name, code, uid,
             default_memory_limit=memory_limit,
             compare_mode=compare_mode,
         )
-        lang_config = await asyncio.to_thread(_get_language_config, lang_name)
         result = await asyncio.to_thread(judger.judge, code, test_cases, lang_config)
         serialized = serialize_result(result)
         cr_json = json.dumps(serialized['case_results'], ensure_ascii=False)
@@ -716,7 +732,7 @@ def _check_rate_limit(user_id: int) -> bool:
     ts_list = [t for t in ts_list if now - t <= 60]
     ts_list.append(now)
     _rate_limit[user_id] = ts_list
-    return len(ts_list) <= 3
+    return len(ts_list) <= 10
 
 
 @app.post('/api/submissions/')
@@ -734,6 +750,8 @@ async def api_submissions_create(request: Request):
     problem_id = data.get('problem_id')
     language = data.get('language')
     code = data.get('code')
+    if code is None:
+        code = data.get('source_code')
     custom_cases = data.get('custom_cases') or []
     assignment_id_raw = data.get('assignment_id')
     exam_id_raw = data.get('exam_id')
@@ -769,8 +787,8 @@ async def api_submissions_create(request: Request):
                 start_dt = datetime.strptime(a['start_at'], '%Y-%m-%d %H:%M:%S')
                 if now_dt < start_dt:
                     return _api_response(403, '作业尚未开始，暂不可提交')
-            if a.get('end_at'):
-                end_dt = datetime.strptime(a['end_at'], '%Y-%m-%d %H:%M:%S')
+            if a.get('due_at'):
+                end_dt = datetime.strptime(a['due_at'], '%Y-%m-%d %H:%M:%S')
                 if now_dt > end_dt:
                     return _api_response(403, '作业已截止，不可提交')
         except Exception:
@@ -1020,9 +1038,6 @@ async def api_submissions_list(request: Request):
     raw_page = request.query_params.get('page')
     raw_page_size = request.query_params.get('page_size')
 
-    if raw_uid is None and raw_pid is None:
-        return _api_response(400, '一级条件至少一项非空')
-
     parsed_uid = None
     if raw_uid is not None:
         try:
@@ -1032,11 +1047,11 @@ async def api_submissions_list(request: Request):
 
     page = None
     page_size = None
-    if raw_page is not None:
+    if raw_page is not None or raw_page_size is not None:
         if raw_page_size is None:
             return _api_response(400, 'page 非空时 page_size 必须提供')
         try:
-            page = int(raw_page)
+            page = int(raw_page) if raw_page is not None else 1
             page_size = int(raw_page_size)
         except (ValueError, TypeError):
             return _api_response(400, 'page / page_size 必须为整数')
@@ -1063,7 +1078,13 @@ async def api_submissions_list(request: Request):
         if msg.startswith("403 "):
             return _api_response(403, msg[4:].strip(), None)
         return _api_response(403, str(e), None)
-    return _api_response(200, 'success', {'total': total, 'submissions': subs})
+    effective_page = page if page is not None else (1 if page_size is not None else None)
+    return _api_response(200, 'success', {
+        'total': total,
+        'page': effective_page,
+        'page_size': page_size,
+        'submissions': subs,
+    })
 
 
 def _sanitize_error(msg: str) -> str:
@@ -1113,9 +1134,15 @@ async def api_submissions_detail(request: Request, submission_id: str):
     if status_str == 'pending':
         return _api_response(200, 'success', {
             'submission_id': str(submission_id),
+            'problem_id': sub.get('problem_id'),
+            'user_id': sub.get('user_id'),
+            'language': sub.get('language') or 'python',
             'status': 'pending',
             'score': None,
             'counts': None,
+            'created_at': sub.get('created_at') or '',
+            'time_ms': int(sub.get('total_time_ms') or 0),
+            'memory_kb': int(float(sub.get('max_memory_mb') or 0) * 1024),
             'compile_info': None,
             'run_info': None,
             'error_info': None,
@@ -1439,11 +1466,11 @@ async def api_logs_access(request: Request, viewer=None):
 
     page = None
     page_size = None
-    if raw_page is not None:
+    if raw_page is not None or raw_page_size is not None:
         if raw_page_size is None:
             return _api_response(400, 'page 非空时 page_size 必须提供')
         try:
-            page = int(raw_page)
+            page = int(raw_page) if raw_page is not None else 1
             page_size = int(raw_page_size)
         except (ValueError, TypeError):
             return _api_response(400, 'page / page_size 必须为整数')
@@ -1462,7 +1489,13 @@ async def api_logs_access(request: Request, viewer=None):
         if msg.startswith("403 "):
             return _api_response(403, msg[4:].strip(), None)
         return _api_response(403, str(e), None)
-    return _api_response(200, 'success', logs)
+    effective_page = page if page is not None else (1 if page_size is not None else None)
+    return _api_response(200, 'success', {
+        'total': total,
+        'page': effective_page,
+        'page_size': page_size,
+        'logs': logs,
+    })
 
 
 # ========================== Task 6: 新增/规范对齐 API ==========================
@@ -1612,7 +1645,7 @@ async def api_class_create(request: Request, viewer=None):
     except Exception:
         data = {}
     c = await asyncio.to_thread(db.create_class, viewer.user_id,
-                                str(data.get('class_name') or ''),
+                                str(data.get('class_name') or data.get('name') or ''),
                                 str(data.get('description') or ''))
     if not c:
         return _api_response(400, '创建失败：班级名称2-40字符且唯一')
@@ -1655,9 +1688,29 @@ async def api_class_add_members(request: Request, class_id: int, viewer=None):
         data = await request.json()
     except Exception:
         data = {}
-    uids = [int(u) for u in (data.get('user_ids') or []) if u]
+    raw_uids = []
+    for key in ('user_ids', 'uids'):
+        raw_uids.extend(data.get(key) or [])
+    if data.get('user_id') is not None:
+        raw_uids.append(data.get('user_id'))
+    usernames = []
+    for key in ('usernames', 'members'):
+        usernames.extend(data.get(key) or [])
+    if data.get('username'):
+        usernames.append(data.get('username'))
+    uids = []
+    for raw_uid in raw_uids:
+        try:
+            uids.append(int(raw_uid))
+        except Exception:
+            continue
+    for username in usernames:
+        user = await asyncio.to_thread(db.get_user_by_username, str(username).strip())
+        if user:
+            uids.append(int(user.user_id))
+    uids = sorted({int(uid) for uid in uids})
     added = await asyncio.to_thread(db.add_class_members, viewer.user_id, int(class_id), uids)
-    return _api_response(200, 'success', {'added': added})
+    return _api_response(200, 'success', {'added': added, 'requested': len(uids)})
 
 
 @app.delete('/api/classes/{class_id}/members')
@@ -1971,7 +2024,10 @@ async def api_exam_publish(request: Request, exam_id: int, viewer=None):
         data = await request.json()
     except Exception:
         data = {}
-    publish = bool(data.get('published', True))
+    if 'score_published' in data:
+        publish = bool(data.get('score_published'))
+    else:
+        publish = bool(data.get('published', True))
     e = await asyncio.to_thread(db.update_exam, viewer.user_id, int(exam_id), {'score_published': publish})
     if not e:
         return _api_response(404, '考试不存在')
@@ -2413,6 +2469,30 @@ def _validate_final_problem_json(j: dict) -> Tuple[bool, str]:
     return True, ''
 
 
+def _parse_ai_problem_json(text: str) -> Tuple[Optional[dict], str]:
+    raw_text = str(text or '').strip()
+    if raw_text.startswith('```'):
+        raw_text = re.sub(r'^```(?:json)?\s*', '', raw_text)
+        raw_text = re.sub(r'\s*```$', '', raw_text)
+    candidates = [raw_text]
+    start = raw_text.find('{')
+    end = raw_text.rfind('}')
+    if start != -1 and end != -1 and end > start:
+        extracted = raw_text[start:end + 1].strip()
+        if extracted and extracted not in candidates:
+            candidates.append(extracted)
+    last_error = '空响应'
+    for candidate in candidates:
+        try:
+            parsed = json.loads(candidate)
+            if isinstance(parsed, dict):
+                return parsed, ''
+            last_error = '返回不是 JSON 对象'
+        except Exception as exc:
+            last_error = f'{exc}; 前80字符: {candidate[:80]}'
+    return None, last_error
+
+
 def _preview_html_from_json(j: dict) -> str:
     tags = ''.join(f'<span class="pl-tag-chip">{t}</span>' for t in (j.get('tags') or []))
     d = (j.get('description') or '').replace('\n','<br>')
@@ -2471,7 +2551,7 @@ def _run_generation_logic(payload, task_uuid, sse_q, user_id):
     force_mock = bool(payload.get('mock_mode'))
     original_mc = _ai_to_model_config(cfg, force_mock=force_mock)
     mc = _prefer_generation_model(original_mc)
-    max_retries = int(payload.get('max_retries') or 0)
+    max_retries = int(payload.get('max_retries') or 2)
     engine = AIEngine(mc)
     push('start', {
         'task_id': task_uuid,
@@ -2488,7 +2568,8 @@ def _run_generation_logic(payload, task_uuid, sse_q, user_id):
         attempt = 0; ok = False; reason = ''
         final_result = None
         while attempt <= max_retries:
-            res = engine.chat(messages, temperature=0.7 + 0.08*attempt, max_tokens=4096, response_json=True)
+            temperature = max(0.2, 0.35 - 0.05 * attempt)
+            res = engine.chat(messages, temperature=temperature, max_tokens=4096, response_json=True)
             total_in += res.input_tokens; total_out += res.output_tokens
             push('token', {'input_tokens': total_in, 'output_tokens': total_out,
                            'cost_cny': engine.count_cost(total_in, total_out),
@@ -2508,13 +2589,9 @@ def _run_generation_logic(payload, task_uuid, sse_q, user_id):
                               started_at=started_ms, finished_at=_now_ms())
                 return
             text = res.content.strip()
-            if text.startswith('```'):
-                text = re.sub(r'^```(?:json)?\s*','', text)
-                text = re.sub(r'\s*```$','', text)
-            try:
-                j = json.loads(text)
-            except Exception as e:
-                reason = f'JSON 解析失败: {e}; 前80字符: {text[:80]}'
+            j, parse_error = _parse_ai_problem_json(text)
+            if j is None:
+                reason = f'JSON 解析失败: {parse_error}'
                 if attempt < max_retries:
                     attempt += 1
                     messages.append({'role':'assistant','content':text[:2000]})

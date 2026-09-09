@@ -4,6 +4,7 @@
 import os
 import sys
 
+import math
 import pandas as pd
 import streamlit as st
 
@@ -16,6 +17,7 @@ from common import (
     is_admin,
     load_all_problems,
     page_url,
+    render_pagination_controls,
     render_page_link,
     render_subheader,
     render_topbar,
@@ -82,6 +84,11 @@ code, data, err = api('GET', '/api/submissions/', params=params)
 payload = data.get('data') if isinstance(data, dict) else {}
 submissions = payload.get('submissions') if isinstance(payload, dict) else []
 total = int(payload.get('total', 0) or 0) if isinstance(payload, dict) else 0
+total_pages = max(1, math.ceil(total / page_size)) if total else 1
+page = min(max(1, page), total_pages)
+if int(filters.get('page', 1) or 1) != page:
+    st.session_state['submission_filters'] = {**filters, 'page': page}
+    st.rerun()
 
 rows = []
 for item in submissions or []:
@@ -121,14 +128,10 @@ with st.container(border=True):
     else:
         st.error(f'查询失败：{data.get("msg") if data else err}')
 
-pager_left, pager_right, pager_info = st.columns([2, 2, 6])
-with pager_left:
-    if st.button('上一页', use_container_width=True, disabled=page <= 1):
-        st.session_state['submission_filters']['page'] = max(1, page - 1)
-        st.rerun()
-with pager_right:
-    if st.button('下一页', use_container_width=True, disabled=page * page_size >= total):
-        st.session_state['submission_filters']['page'] = page + 1
-        st.rerun()
-with pager_info:
-    st.caption(f'当前第 {page} 页，每页 {page_size} 条。')
+render_pagination_controls(
+    'submission_filters',
+    page,
+    total_pages,
+    page_size,
+    total_items=total,
+)

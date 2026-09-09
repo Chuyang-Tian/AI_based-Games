@@ -102,6 +102,7 @@ if class_id:
                 class_name = st.text_input('班级名称', value=detail.get('class_name', ''))
                 description = st.text_area('班级描述', value=detail.get('description', ''), height=100)
                 member_ids = st.text_input('新增成员用户 ID（逗号分隔）', placeholder='例如 2,3,4')
+                member_usernames = st.text_input('新增成员用户名（逗号分隔）', placeholder='例如 stu_alice, stu_bob')
                 remove_ids = st.text_input('移除成员用户 ID（逗号分隔）', placeholder='例如 5,6')
                 c1, c2 = st.columns(2)
                 save_clicked = c1.form_submit_button('保存班级', type='primary', use_container_width=True)
@@ -111,9 +112,10 @@ if class_id:
                 save_code, save_data, save_err = api('PUT', f'/api/classes/{class_id}', {'class_name': class_name, 'description': description})
                 if save_code == 200:
                     add_list = [int(item.strip()) for item in member_ids.split(',') if item.strip().isdigit()]
+                    add_usernames = [item.strip() for item in member_usernames.split(',') if item.strip()]
                     remove_list = [int(item.strip()) for item in remove_ids.split(',') if item.strip().isdigit()]
-                    if add_list:
-                        api('POST', f'/api/classes/{class_id}/members', {'user_ids': add_list})
+                    if add_list or add_usernames:
+                        api('POST', f'/api/classes/{class_id}/members', {'user_ids': add_list, 'usernames': add_usernames})
                     if remove_list:
                         api('DELETE', f'/api/classes/{class_id}/members', {'user_ids': remove_list})
                     toast_safe('班级已更新', 'ok')

@@ -16,6 +16,7 @@ SESSION = requests.Session()
 
 ROUTE = {
     'home': 'app_streamlit.py',
+    'auth': 'pages/🔐_登录注册.py',
     'judge': 'pages/⚖️_判题器.py',
     'classes': 'pages/🎓_班级.py',
     'assignments': 'pages/📝_作业.py',
@@ -31,6 +32,7 @@ ROUTE = {
 ROUTE_ORDER = ['home', 'classes', 'assignments', 'exams', 'problems', 'submissions', 'users', 'ai', 'ai_config']
 ROUTE_LABELS_ZH = {
     'home': '🏠 判题首页',
+    'auth': '🔐 登录 / 注册',
     'classes': '🎓 班级',
     'assignments': '📝 作业',
     'exams': '📝 考试',
@@ -43,6 +45,7 @@ ROUTE_LABELS_ZH = {
 }
 ROUTE_LABELS_USER_ZH = {
     'home': '🏠 判题首页',
+    'auth': '🔐 登录 / 注册',
     'classes': '🎓 我的班级',
     'assignments': '📝 我的作业',
     'exams': '📝 我的考试',
@@ -53,6 +56,7 @@ ROUTE_LABELS_USER_ZH = {
 }
 ROUTE_LABELS_EN = {
     'home': '🏠 Home',
+    'auth': '🔐 Login',
     'classes': '🎓 Classes',
     'assignments': '📝 Assignments',
     'exams': '📝 Exams',
@@ -65,6 +69,7 @@ ROUTE_LABELS_EN = {
 }
 ROUTE_LABELS_USER_EN = {
     'home': '🏠 Home',
+    'auth': '🔐 Login',
     'classes': '🎓 My Classes',
     'assignments': '📝 My Assignments',
     'exams': '📝 My Exams',
@@ -75,6 +80,7 @@ ROUTE_LABELS_USER_EN = {
 }
 ROUTE_TO_SLUG = {
     'home': '',
+    'auth': '登录注册',
     'classes': '班级',
     'assignments': '作业',
     'exams': '考试',
@@ -155,7 +161,7 @@ LOCALE_OPTIONS = {
 I18N = {
     'en-US': {
         'platform_title': '💻 OJ Debug Platform',
-        'build_version': 'v1.1.2',
+        'build_version': '1.3',
         'theme_picker': 'Theme',
         'locale_picker': 'Language',
         'logout': 'Log Out',
@@ -699,7 +705,7 @@ def page_url(route_key, **query_kwargs):
     params['theme'] = get_theme_key()
     params['locale'] = get_locale()
     route_identity_keys = {'id', 'assignment_id', 'exam_id', 'class_id', 'submission_id'}
-    if route_key in {'home', 'classes', 'assignments', 'exams', 'problems', 'submissions', 'users', 'ai', 'ai_config'}:
+    if route_key in {'home', 'auth', 'classes', 'assignments', 'exams', 'problems', 'submissions', 'users', 'ai', 'ai_config'}:
         for key in route_identity_keys:
             params.pop(key, None)
     for key, value in query_kwargs.items():
@@ -720,25 +726,14 @@ def goto(route_key, **query_kwargs):
     page_rel = ROUTE.get(route_key)
     if not page_rel:
         return
-    params = _current_query_params_dict()
-    params['theme'] = get_theme_key()
-    params['locale'] = get_locale()
-    route_identity_keys = {'id', 'assignment_id', 'exam_id', 'class_id', 'submission_id'}
-    if route_key in {'home', 'classes', 'assignments', 'exams', 'problems', 'submissions', 'users', 'ai', 'ai_config'}:
-        for key in route_identity_keys:
-            params.pop(key, None)
-    for key, value in query_kwargs.items():
-        if value is None:
-            continue
-        params[str(key)] = str(value)
+    full_url = page_url(route_key, **query_kwargs)
     if route_key == 'submission_detail':
+        params = dict(query_kwargs)
         sid = params.get('id') or params.get('submission_id')
         if sid:
             sid = str(sid)
-            params['id'] = sid
-            params['submission_id'] = sid
             st.session_state['last_submission_id'] = sid
-    st.session_state['pending_goto'] = (page_rel, params)
+    st.session_state['pending_goto'] = ('js_navigate', full_url)
     st.rerun()
 
 
@@ -830,13 +825,12 @@ def render_topbar(page_tag=''):
                     st.rerun()
             else:
                 st.caption(tr('not_logged_in', '当前未登录'))
-                if st.button(tr('login_or_register', '登录 / 注册'), key='topbar_login', type='primary', use_container_width=True):
-                    login_dialog()
+                render_page_link(tr('login_or_register', '登录 / 注册'), page_url('auth'), primary=True)
 
 
 @st.cache_data(show_spinner=False)
 def get_build_label():
-    default_label = 'v1.1.2'
+    default_label = '1.3'
     forced_label = str(os.environ.get('OJ_BUILD_LABEL') or '').strip()
     if forced_label:
         return forced_label
@@ -877,6 +871,53 @@ def render_page_link(label, url, primary=False):
         f'<a class="{btn_class}" href="{safe_url}" target="_self">{safe_label}</a>',
         unsafe_allow_html=True,
     )
+
+
+def _set_pagination_page(state_key, page):
+    current = st.session_state.get(state_key)
+    normalized_page = max(1, int(page or 1))
+    if isinstance(current, dict):
+        next_state = dict(current)
+        next_state['page'] = normalized_page
+        st.session_state[state_key] = next_state
+    else:
+        st.session_state[state_key] = normalized_page
+
+
+def render_pagination_controls(state_key, current_page, total_pages, page_size, total_items=None):
+    total_pages = max(1, int(total_pages or 1))
+    current_page = min(max(1, int(current_page or 1)), total_pages)
+    info_parts = [f'当前第 {current_page} / {total_pages} 页', f'每页 {int(page_size or 1)} 条']
+    if total_items is not None:
+        info_parts.append(f'共 {int(total_items or 0)} 条')
+
+    prev_col, info_col, jump_col, next_col = st.columns([1.2, 2.2, 2.6, 1.2])
+    with prev_col:
+        if st.button('上一页', key=f'{state_key}_prev', use_container_width=True, disabled=current_page <= 1):
+            _set_pagination_page(state_key, current_page - 1)
+            st.rerun()
+    with info_col:
+        st.caption('，'.join(info_parts) + '。')
+    with jump_col:
+        jump_left, jump_right = st.columns([3, 2])
+        with jump_left:
+            target_page = st.number_input(
+                '跳转页码',
+                min_value=1,
+                max_value=total_pages,
+                value=current_page,
+                step=1,
+                key=f'{state_key}_jump',
+            )
+        with jump_right:
+            st.write('')
+            if st.button('跳转', key=f'{state_key}_go', use_container_width=True):
+                _set_pagination_page(state_key, int(target_page))
+                st.rerun()
+    with next_col:
+        if st.button('下一页', key=f'{state_key}_next', use_container_width=True, disabled=current_page >= total_pages):
+            _set_pagination_page(state_key, current_page + 1)
+            st.rerun()
 
 
 def render_sample_cases(samples, heading='公开样例'):
@@ -1014,16 +1055,40 @@ def ensure_init():
     st.markdown(build_minimal_css(), unsafe_allow_html=True)
     pending = st.session_state.pop('pending_goto', None)
     if pending:
-        page_path, params = pending
         try:
-            for key in list(st.query_params.keys()):
-                del st.query_params[key]
+            kind, payload = pending
         except Exception:
-            pass
-        for key, value in (params or {}).items():
-            st.query_params[key] = value
-        try:
-            st.switch_page(page_path)
-        except Exception:
-            pass
+            kind, payload = None, None
+        if kind == 'js_navigate' and isinstance(payload, str):
+            from urllib.parse import urlparse, parse_qs
+            try:
+                parsed = urlparse(payload)
+                query = parse_qs(parsed.query)
+                for key in list(st.query_params.keys()):
+                    del st.query_params[key]
+                for k, vs in query.items():
+                    if vs:
+                        st.query_params[str(k)] = str(vs[0])
+            except Exception:
+                pass
+            safe_url = html.escape(payload, quote=True)
+            st.markdown(
+                f'''<meta http-equiv="refresh" content="0; url={safe_url}"><script>window.location.replace("{safe_url}");</script>''',
+                unsafe_allow_html=True,
+            )
+            st.stop()
+        else:
+            page_path, params = (pending if isinstance(pending, tuple) and len(pending) == 2 else (None, None))
+            if page_path:
+                try:
+                    for key in list(st.query_params.keys()):
+                        del st.query_params[key]
+                except Exception:
+                    pass
+                for key, value in (params or {}).items():
+                    st.query_params[key] = value
+                try:
+                    st.switch_page(page_path)
+                except Exception:
+                    pass
     refresh_me()

@@ -82,8 +82,10 @@ if exam_id:
             with st.container(border=True):
                 left, mid, right = st.columns([6, 2, 2])
                 with left:
-                    st.markdown(f"**{pid} · {item.get('title') or ''}**")
-                    st.caption(f"分值：{item.get('points', 0)}  |  顺序：{item.get('order_index', 0)}")
+                    title_text = item.get('title') or pid or '未命名题目'
+                    order_value = item.get('order') or item.get('order_index') or '-'
+                    st.markdown(f"**{pid} · {title_text}**")
+                    st.caption(f"分值：{item.get('points', 0)}  |  顺序：{order_value}")
                 with mid:
                     render_page_link('题目详情', page_url('problem_detail', id=pid))
                 with right:
@@ -91,6 +93,13 @@ if exam_id:
 
     if is_admin():
         with st.expander('考试管理', expanded=False):
+            publish_now = st.checkbox('立即发布成绩', value=bool(detail.get('score_published')))
+            if st.button('更新成绩发布状态', type='primary', use_container_width=True):
+                publish_code, publish_data, publish_err = api('PUT', f'/api/exams/{exam_id}/publish', {'score_published': publish_now})
+                if publish_code == 200:
+                    toast_safe('考试发布状态已更新', 'ok')
+                    st.rerun()
+                st.error(f'更新失败：{publish_data.get("msg") if publish_data else publish_err}')
             stats_code, stats_data, stats_err = api('GET', f'/api/exams/{exam_id}/stats')
             if stats_code == 200 and isinstance(stats_data, dict):
                 stats = stats_data.get('data') or {}
@@ -125,3 +134,47 @@ else:
                     st.caption(f"{mode_text}  |  题目数：{item.get('problem_count')}  |  结束：{item.get('end_at') or '-'}")
                 with right:
                     render_page_link('查看考试', page_url('exams', id=item.get('exam_id')), primary=True)
+
+    if is_admin():
+        classes_code, classes_data, _ = api('GET', '/api/classes')
+        classes = classes_data.get('data') if classes_code == 200 and isinstance(classes_data, dict) else []
+        probs_code, probs_data, _ = api('GET', '/api/problems')
+        problems = probs_data.get('data') if probs_code == 200 and isinstance(probs_data, dict) else []
+        class_options = {f"#{item.get('class_id')} · {item.get('class_name')}": int(item.get('class_id')) for item in classes or []}
+        problem_options = {
+            f"{item.get('id')} · {item.get('title') or item.get('id')}": str(item.get('id'))
+            for item in problems or []
+        }
+        with st.expander('创建考试', expanded=False):
+            with st.form('exam_create_form'):
+                title = st.text_input('考试标题')
+                description = st.text_area('考试说明', height=100)
+                selected_classes = st.multiselect('面向班级', list(class_options.keys()))
+                selected_problems = st.multiselect('题目列表', list(problem_options.keys()))
+                point_each = st.number_input('每题分值', min_value=1, max_value=100, value=50, step=5)
+                mode = st.selectbox('考试模式', options=[1, 2], format_func=lambda x: '固定窗口' if x == 1 else '个人计时')
+                duration_minutes = st.number_input('个人计时时长（分钟）', min_value=1, max_value=480, value=90, step=5)
+                start_at = st.text_input('开始时间', value='2020-01-01 00:00:00')
+                end_at = st.text_input('结束时间', value='2099-12-31 23:59:59')
+                score_published = st.checkbox('创建后立即发布成绩', value=False)
+                created = st.form_submit_button('创建考试', type='primary', use_container_width=True)
+            if created:
+                payload = {
+                    'title': title.strip(),
+                    'description': description,
+                    'mode': int(mode),
+                    'duration_minutes': int(duration_minutes),
+                    'audience_classes': [class_options[key] for key in selected_classes],
+                    'problem_order': [
+                        {'problem_id': problem_options[key], 'points': int(point_each), 'order': idx + 1}
+                        for idx, key in enumerate(selected_problems)
+                    ],
+                    'start_at': start_at.strip() or None,
+                    'end_at': end_at.strip() or None,
+                    'score_published': score_published,
+                }
+                create_code, create_data, create_err = api('POST', '/api/exams', payload)
+                if create_code == 200:
+                    toast_safe('考试创建成功', 'ok')
+                    st.rerun()
+                st.error(f'创建失败：{create_data.get("msg") if create_data else create_err}')

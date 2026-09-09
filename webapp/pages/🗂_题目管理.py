@@ -19,6 +19,7 @@ from common import (
     is_admin,
     load_all_problems,
     page_url,
+    render_pagination_controls,
     render_page_link,
     render_subheader,
     render_topbar,
@@ -62,7 +63,7 @@ if 'problem_filters' not in st.session_state:
         'difficulty': '',
         'tags': [],
         'page': 1,
-        'page_size': 12,
+        'page_size': 30,
     }
 
 filters = st.session_state['problem_filters']
@@ -80,7 +81,16 @@ with st.container(border=True):
     with c3:
         selected_tags = st.multiselect('标签筛选', all_tags, default=filters.get('tags', []), placeholder='按标签缩小范围')
     with c4:
-        page_size = st.selectbox('每页数量', [8, 12, 20, 30], index=[8, 12, 20, 30].index(filters.get('page_size', 12)))
+        page_size_options = [12, 20, 30, 9999]
+        current_page_size = int(filters.get('page_size', 30) or 30)
+        if current_page_size not in page_size_options:
+            current_page_size = 30
+        page_size = st.selectbox(
+            '每页数量',
+            page_size_options,
+            index=page_size_options.index(current_page_size),
+            format_func=lambda value: '全部' if int(value) >= 9999 else str(value),
+        )
 
     quick_a, quick_b, quick_c = st.columns([1, 1, 2])
     with quick_a:
@@ -100,7 +110,7 @@ with st.container(border=True):
                 'difficulty': '',
                 'tags': [],
                 'page': 1,
-                'page_size': 12,
+                'page_size': 30,
             }
             st.rerun()
     with quick_c:
@@ -112,20 +122,29 @@ with st.container(border=True):
 filters = st.session_state['problem_filters']
 active_tags = list(filters.get('tags') or [])
 filtered = get_filtered_problems(problems, filters.get('keyword', ''), filters.get('difficulty', ''), active_tags)
-total_pages = max(1, math.ceil(len(filtered) / int(filters.get('page_size', 12) or 12)))
+page_size_value = int(filters.get('page_size', 30) or 30)
+if page_size_value >= 9999:
+    page_size_value = max(len(filtered), 1)
+total_pages = max(1, math.ceil(len(filtered) / page_size_value))
 filters['page'] = min(max(1, int(filters.get('page', 1) or 1)), total_pages)
-start = (filters['page'] - 1) * int(filters['page_size'])
-end = start + int(filters['page_size'])
+start = (filters['page'] - 1) * page_size_value
+end = start + page_size_value
 visible_items = filtered[start:end]
+visible_count = len(visible_items)
 
-stats = st.columns(4)
+stats = st.columns(5)
 stats[0].metric('题库总数', len(problems))
 stats[1].metric('筛选结果', len(filtered))
 stats[2].metric('已选标签', len(active_tags))
 stats[3].metric('当前页码', f"{filters['page']} / {total_pages}")
+stats[4].metric('当前展示', f'{visible_count} / {len(filtered)}')
 
 with st.container(border=True):
     st.subheader('题目目录', divider=False)
+    if len(filtered) > visible_count:
+        st.caption(f'当前仅展示第 {start + 1} - {min(end, len(filtered))} 题，共 {len(filtered)} 题；可在上方把“每页数量”改为“全部”，或翻到下一页继续看。')
+    else:
+        st.caption(f'当前已展示全部 {len(filtered)} 道题。')
     if active_tags:
         active_html = ''.join(f'<span class="oj-pill oj-pill-active">#{tag}</span>' for tag in active_tags)
         st.markdown(active_html, unsafe_allow_html=True)
@@ -146,17 +165,13 @@ with st.container(border=True):
                 with right:
                     render_page_link('进入判题', page_url('judge', id=item.get('id')), primary=True)
 
-pager_left, pager_mid, pager_right = st.columns([1, 2, 1])
-with pager_left:
-    if st.button('上一页', use_container_width=True, disabled=filters['page'] <= 1):
-        st.session_state['problem_filters']['page'] = max(1, filters['page'] - 1)
-        st.rerun()
-with pager_mid:
-    st.caption(f"当前显示第 {filters['page']} 页，共 {total_pages} 页，每页 {filters['page_size']} 条。")
-with pager_right:
-    if st.button('下一页', use_container_width=True, disabled=filters['page'] >= total_pages):
-        st.session_state['problem_filters']['page'] = min(total_pages, filters['page'] + 1)
-        st.rerun()
+render_pagination_controls(
+    'problem_filters',
+    filters['page'],
+    total_pages,
+    page_size_value,
+    total_items=len(filtered),
+)
 
 if is_admin():
     with st.expander('新增题目', expanded=False):

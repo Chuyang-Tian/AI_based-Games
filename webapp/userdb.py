@@ -355,6 +355,15 @@ class UserDatabase:
                 ''', ('python', '.py', None, 'python {src}', 3.0, 128, 1, now_l))
             except Exception:
                 pass
+            try:
+                conn.execute(
+                    '''UPDATE languages
+                       SET file_ext = ?, compile_cmd = NULL, run_cmd = ?, is_builtin = 1, enabled = 1
+                       WHERE name = ?''',
+                    ('.py', '{python} -u -B {src}', 'python'),
+                )
+            except Exception:
+                pass
             cpp_compiler = find_cpp_compiler()
             if cpp_compiler:
                 try:
@@ -749,6 +758,182 @@ class UserDatabase:
                 'public_cases': 0,
                 'template': 'n = int(input())\nprint(n * (n + 1) // 2)\n',
             },
+            {
+                'id': 'gcd',
+                'title': '最大公约数',
+                'description': '输入两个正整数 a 和 b，输出它们的最大公约数。',
+                'input_description': '一行两个正整数 a 和 b，空格分隔。',
+                'output_description': '一行一个整数，表示 gcd(a, b)。',
+                'samples': [
+                    {'input': '12 18\n', 'output': '6\n', 'explanation': '12 和 18 的最大公约数是 6。'},
+                    {'input': '7 5\n', 'output': '1\n', 'explanation': '7 和 5 互质，因此最大公约数是 1。'},
+                ],
+                'constraints': '1 <= a, b <= 10^9',
+                'testcases': [],
+                'hint': '推荐使用欧几里得算法。',
+                'source': '数论基础',
+                'tags': ['数学', '数论'],
+                'time_limit': 1.0,
+                'memory_limit': 64,
+                'author': 'system',
+                'difficulty': '简单',
+                'public_cases': 0,
+                'template': 'a, b = map(int, input().split())\nwhile b:\n    a, b = b, a % b\nprint(a)\n',
+            },
+            {
+                'id': 'palindrome',
+                'title': '回文串判断',
+                'description': '输入一个字符串，判断它是否为回文串。若是输出 Yes，否则输出 No。',
+                'input_description': '一行一个仅包含字母和数字的字符串 s。',
+                'output_description': '一行输出 Yes 或 No。',
+                'samples': [
+                    {'input': 'abba\n', 'output': 'Yes\n', 'explanation': '从前往后和从后往前都相同，因此是回文串。'},
+                    {'input': 'abca\n', 'output': 'No\n', 'explanation': '反转后为 acba，与原串不同，因此不是回文串。'},
+                ],
+                'constraints': '1 <= |s| <= 10^5',
+                'testcases': [],
+                'hint': '可以直接比较 s 和 s[::-1]。',
+                'source': '字符串入门',
+                'tags': ['字符串'],
+                'time_limit': 1.0,
+                'memory_limit': 64,
+                'author': 'system',
+                'difficulty': '简单',
+                'public_cases': 0,
+                'template': 's = input().strip()\nprint("Yes" if s == s[::-1] else "No")\n',
+            },
+            {
+                'id': 'countones',
+                'title': '二进制中 1 的个数',
+                'description': '输入一个非负整数 n，输出它的二进制表示中 1 的个数。',
+                'input_description': '一行一个非负整数 n。',
+                'output_description': '一行一个整数，表示二进制中 1 的个数。',
+                'samples': [
+                    {'input': '5\n', 'output': '2\n', 'explanation': '5 的二进制是 101，其中有 2 个 1。'},
+                    {'input': '15\n', 'output': '4\n', 'explanation': '15 的二进制是 1111，其中有 4 个 1。'},
+                ],
+                'constraints': '0 <= n <= 2^31 - 1',
+                'testcases': [],
+                'hint': 'Python 可以使用 bin(n).count("1")。',
+                'source': '位运算基础',
+                'tags': ['位运算', '基础'],
+                'time_limit': 1.0,
+                'memory_limit': 64,
+                'author': 'system',
+                'difficulty': '简单',
+                'public_cases': 0,
+                'template': 'n = int(input())\nprint(bin(n).count("1"))\n',
+            },
+            {
+                'id': 'reverse',
+                'title': '字符串反转',
+                'description': '输入一个字符串，输出它的反转结果。',
+                'input_description': '一行一个字符串 s。',
+                'output_description': '一行一个字符串，表示反转后的结果。',
+                'samples': [
+                    {'input': 'hello\n', 'output': 'olleh\n', 'explanation': '将 hello 逆序输出即可。'},
+                    {'input': '12345\n', 'output': '54321\n', 'explanation': '反转后为 54321。'},
+                ],
+                'constraints': '1 <= |s| <= 10^5',
+                'testcases': [],
+                'hint': '切片 s[::-1] 足够直接。',
+                'source': '字符串入门',
+                'tags': ['字符串', '模拟'],
+                'time_limit': 1.0,
+                'memory_limit': 64,
+                'author': 'system',
+                'difficulty': '简单',
+                'public_cases': 0,
+                'template': 's = input().rstrip(\"\\n\")\nprint(s[::-1])\n',
+            },
+            {
+                'id': 'prefixsum',
+                'title': '前缀和查询',
+                'description': '第一行输入 n 和 q，第二行输入 n 个整数。接下来 q 行每行输入 l 和 r，输出区间和。',
+                'input_description': '第一行 n, q；第二行数组；接下来 q 行为查询区间 [l, r]（1-indexed）。',
+                'output_description': '输出 q 行，每行一个区间和。',
+                'samples': [
+                    {'input': '5 2\n1 2 3 4 5\n1 3\n2 5\n', 'output': '6\n14\n', 'explanation': '[1,3] 的和为 6，[2,5] 的和为 14。'},
+                    {'input': '4 1\n3 3 3 3\n2 4\n', 'output': '9\n', 'explanation': '第 2 到 4 个数之和为 9。'},
+                ],
+                'constraints': '1 <= n, q <= 2*10^5',
+                'testcases': [],
+                'hint': '预处理前缀和数组，再 O(1) 回答每次查询。',
+                'source': '前缀和基础',
+                'tags': ['前缀和', '数组'],
+                'time_limit': 2.0,
+                'memory_limit': 128,
+                'author': 'system',
+                'difficulty': '中等',
+                'public_cases': 0,
+                'template': 'n, q = map(int, input().split())\narr = list(map(int, input().split()))\nprefix = [0]\nfor x in arr:\n    prefix.append(prefix[-1] + x)\nfor _ in range(q):\n    l, r = map(int, input().split())\n    print(prefix[r] - prefix[l - 1])\n',
+            },
+            {
+                'id': 'primecheck',
+                'title': '质数判断',
+                'description': '输入一个整数 n，判断它是否是质数。若是输出 Yes，否则输出 No。',
+                'input_description': '一行一个整数 n。',
+                'output_description': '输出 Yes 或 No。',
+                'samples': [
+                    {'input': '2\n', 'output': 'Yes\n', 'explanation': '2 是最小的质数。'},
+                    {'input': '21\n', 'output': 'No\n', 'explanation': '21 可以被 3 整除，因此不是质数。'},
+                ],
+                'constraints': '1 <= n <= 10^9',
+                'testcases': [],
+                'hint': '只需要检查到 sqrt(n)。',
+                'source': '数论基础',
+                'tags': ['数学', '质数'],
+                'time_limit': 1.0,
+                'memory_limit': 64,
+                'author': 'system',
+                'difficulty': '简单',
+                'public_cases': 0,
+                'template': 'n = int(input())\nif n < 2:\n    print(\"No\")\nelse:\n    ok = True\n    i = 2\n    while i * i <= n:\n        if n % i == 0:\n            ok = False\n            break\n        i += 1\n    print(\"Yes\" if ok else \"No\")\n',
+            },
+            {
+                'id': 'brackets',
+                'title': '括号匹配',
+                'description': '输入一个只包含小括号的字符串，判断括号序列是否合法。若合法输出 Yes，否则输出 No。',
+                'input_description': '一行一个只包含 ( 和 ) 的字符串。',
+                'output_description': '输出 Yes 或 No。',
+                'samples': [
+                    {'input': '(()())\n', 'output': 'Yes\n', 'explanation': '每个左括号都能正确匹配。'},
+                    {'input': '())(\n', 'output': 'No\n', 'explanation': '第三个字符时已经失配，因此不合法。'},
+                ],
+                'constraints': '1 <= |s| <= 2*10^5',
+                'testcases': [],
+                'hint': '维护一个计数器或栈，扫描过程中不能出现负数。',
+                'source': '栈基础',
+                'tags': ['栈', '字符串'],
+                'time_limit': 1.0,
+                'memory_limit': 64,
+                'author': 'system',
+                'difficulty': '简单',
+                'public_cases': 0,
+                'template': 's = input().strip()\nbal = 0\nok = True\nfor ch in s:\n    if ch == \"(\":\n        bal += 1\n    else:\n        bal -= 1\n    if bal < 0:\n        ok = False\n        break\nprint(\"Yes\" if ok and bal == 0 else \"No\")\n',
+            },
+            {
+                'id': 'matrixtrace',
+                'title': '矩阵主对角线和',
+                'description': '输入一个 n x n 矩阵，输出主对角线元素之和。',
+                'input_description': '第一行一个整数 n，接下来 n 行每行 n 个整数。',
+                'output_description': '一行一个整数，表示主对角线和。',
+                'samples': [
+                    {'input': '3\n1 2 3\n4 5 6\n7 8 9\n', 'output': '15\n', 'explanation': '主对角线元素为 1, 5, 9，总和为 15。'},
+                    {'input': '2\n10 1\n2 20\n', 'output': '30\n', 'explanation': '主对角线元素为 10 和 20，总和为 30。'},
+                ],
+                'constraints': '1 <= n <= 500',
+                'testcases': [],
+                'hint': '只需要累计第 i 行第 i 列的值。',
+                'source': '矩阵入门',
+                'tags': ['矩阵', '模拟'],
+                'time_limit': 1.0,
+                'memory_limit': 64,
+                'author': 'system',
+                'difficulty': '简单',
+                'public_cases': 0,
+                'template': 'n = int(input())\nans = 0\nfor i in range(n):\n    row = list(map(int, input().split()))\n    ans += row[i]\nprint(ans)\n',
+            },
         ]
         with self._connect() as conn:
             for p in SEED:
@@ -828,8 +1013,16 @@ class UserDatabase:
         hint = fields.get('hint') or ''
         source = fields.get('source') or ''
         tags = fields.get('tags') or []
-        time_limit = float(fields.get('time_limit') or 3.0)
-        memory_limit = int(fields.get('memory_limit') or 128)
+        raw_time_limit = fields.get('time_limit')
+        raw_memory_limit = fields.get('memory_limit')
+        try:
+            time_limit = float(raw_time_limit) if raw_time_limit is not None and str(raw_time_limit).strip() != '' else 0.0
+        except Exception:
+            time_limit = 0.0
+        try:
+            memory_limit = int(raw_memory_limit) if raw_memory_limit is not None and str(raw_memory_limit).strip() != '' else 0
+        except Exception:
+            memory_limit = 0
         author = fields.get('author') or ''
         difficulty = fields.get('difficulty') or ''
         public_cases = int(fields.get('public_cases') or 0)
@@ -937,7 +1130,7 @@ class UserDatabase:
 
     def delete_problem(self, problem_id: str) -> bool:
         with self._connect() as conn:
-            cur_subs = conn.execute('SELECT id FROM submissions WHERE problem_id = ?', (problem_id,))
+            cur_subs = conn.execute('SELECT submission_id FROM submissions WHERE problem_id = ?', (problem_id,))
             sub_ids = [r[0] for r in cur_subs.fetchall()]
             if sub_ids:
                 placeholders = ','.join('?' * len(sub_ids))
@@ -1793,15 +1986,26 @@ class UserDatabase:
         with self._connect() as conn:
             for uid in user_ids:
                 try:
+                    exists = conn.execute('SELECT 1 FROM users WHERE user_id = ?', (int(uid),)).fetchone()
+                    if exists is None:
+                        continue
+                    existed_before = conn.execute(
+                        'SELECT 1 FROM class_members WHERE class_id = ? AND user_id = ?',
+                        (int(class_id), int(uid)),
+                    ).fetchone() is not None
                     conn.execute(
                         'INSERT OR IGNORE INTO class_members (class_id, user_id, joined_at) VALUES (?, ?, ?)',
                         (int(class_id), int(uid), now),
                     )
-                    added += 1
+                    if not existed_before and conn.execute(
+                        'SELECT 1 FROM class_members WHERE class_id = ? AND user_id = ?',
+                        (int(class_id), int(uid)),
+                    ).fetchone():
+                        added += 1
                 except Exception:
                     continue
             conn.execute('UPDATE classes SET member_count = (SELECT COUNT(*) FROM class_members cm WHERE cm.class_id = classes.class_id), updated_at = ? WHERE class_id = ?', (now, int(class_id)))
-            self._append_audit(conn, int(operator_id), 'ADD_CLASS_MEMBER', 'class', str(class_id), f'add_users={len(user_ids)}')
+            self._append_audit(conn, int(operator_id), 'ADD_CLASS_MEMBER', 'class', str(class_id), f'add_users={added}')
             conn.commit()
         return added
 
@@ -1829,11 +2033,43 @@ class UserDatabase:
             return [self._row_to_class(r) for r in cur.fetchall()]
 
     # ============== v3: 作业 ==============
+    def _normalize_problem_order(self, items, default_points: int = 10) -> List[dict]:
+        normalized = []
+        for index, item in enumerate(items or []):
+            if isinstance(item, dict):
+                pid = str(item.get('problem_id') or item.get('pid') or item.get('id') or '').strip()
+                raw = item
+            else:
+                pid = str(item or '').strip()
+                raw = {}
+            if not pid:
+                continue
+            problem = self.get_problem(pid) or {}
+            try:
+                points = int(raw.get('points', default_points) or default_points)
+            except Exception:
+                points = int(default_points)
+            try:
+                order = int(raw.get('order') or raw.get('order_index') or (index + 1))
+            except Exception:
+                order = index + 1
+            normalized.append({
+                'problem_id': pid,
+                'title': str(raw.get('title') or problem.get('title') or '').strip(),
+                'points': max(0, points),
+                'order': max(1, order),
+            })
+        normalized.sort(key=lambda x: (int(x.get('order') or 0), x.get('problem_id') or ''))
+        for index, item in enumerate(normalized, start=1):
+            item['order'] = index
+            item['order_index'] = index
+        return normalized
+
     def _row_to_assignment(self, row) -> Optional[dict]:
         if row is None:
             return None
         flags = self._parse_json_field(row['flags'], {}) or {}
-        po = self._parse_json_field(row['problem_order'], []) or []
+        po = self._normalize_problem_order(self._parse_json_field(row['problem_order'], []) or [])
         ac = self._parse_json_field(row['audience_classes'], []) or []
         aeu = self._parse_json_field(row['audience_extra_users'], []) or []
         total_points = 0
@@ -1895,27 +2131,33 @@ class UserDatabase:
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         default_flags = {'allow_leaderboard': True, 'allow_others_sub': False, 'allow_custom_debug': True, 'allow_late': True}
         flags = dict(default_flags); flags.update({k: bool(v) for k, v in (data.get('flags') or {}).items() if k in default_flags})
-        problem_order = data.get('problem_order') or []
-        audience_classes = data.get('classes') or data.get('audience_classes') or []
+        problem_order = data.get('problem_order')
+        if problem_order is None and 'problem_ids' in data:
+            problem_order = data.get('problem_ids') or []
+        audience_classes = data.get('classes') or data.get('audience_classes')
+        if audience_classes is None and data.get('class_id') is not None:
+            audience_classes = [data.get('class_id')]
+        audience_classes = audience_classes or []
         audience_extra = data.get('extra_users') or data.get('audience_extra_users') or []
+        due_at = data.get('due_at')
+        if due_at is None and 'end_at' in data:
+            due_at = data.get('end_at')
+        normalized_problem_order = self._normalize_problem_order(problem_order)
         with self._connect() as conn:
             cur = conn.execute(
                 '''INSERT INTO assignments (title, description, creator_admin_id, audience_classes, audience_extra_users, problem_order, start_at, due_at, flags, published, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)''',
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (
                     title,
                     (data.get('description') or '').strip(),
                     int(operator_id),
                     json.dumps([int(x) for x in audience_classes], ensure_ascii=False),
                     json.dumps([int(x) for x in audience_extra], ensure_ascii=False),
-                    json.dumps([{
-                        'problem_id': str(x.get('problem_id') or x.get('pid') or ''),
-                        'points': int(x.get('points', 10) or 10),
-                        'order': int(i + 1),
-                    } for i, x in enumerate(problem_order)], ensure_ascii=False),
+                    json.dumps(normalized_problem_order, ensure_ascii=False),
                     data.get('start_at') or None,
-                    data.get('due_at') or None,
+                    due_at or None,
                     json.dumps(flags, ensure_ascii=False),
+                    1 if bool(data.get('published', True)) else 0,
                     now, now,
                 ),
             )
@@ -1934,24 +2176,26 @@ class UserDatabase:
             sets.append('title = ?'); params.append(str(data['title']).strip())
         if 'description' in data:
             sets.append('description = ?'); params.append(str(data.get('description') or '').strip())
-        if 'classes' in data or 'audience_classes' in data:
-            ac = data.get('classes') if 'classes' in data else data.get('audience_classes')
+        if 'classes' in data or 'audience_classes' in data or 'class_id' in data:
+            if 'classes' in data:
+                ac = data.get('classes')
+            elif 'audience_classes' in data:
+                ac = data.get('audience_classes')
+            else:
+                ac = [data.get('class_id')] if data.get('class_id') is not None else []
             sets.append('audience_classes = ?'); params.append(json.dumps([int(x) for x in (ac or [])], ensure_ascii=False))
         if 'extra_users' in data or 'audience_extra_users' in data:
             ex = data.get('extra_users') if 'extra_users' in data else data.get('audience_extra_users')
             sets.append('audience_extra_users = ?'); params.append(json.dumps([int(x) for x in (ex or [])], ensure_ascii=False))
-        if 'problem_order' in data:
-            po = data.get('problem_order') or []
+        if 'problem_order' in data or 'problem_ids' in data:
+            po = data.get('problem_order') if 'problem_order' in data else data.get('problem_ids')
             sets.append('problem_order = ?')
-            params.append(json.dumps([{
-                'problem_id': str(x.get('problem_id') or x.get('pid') or ''),
-                'points': int(x.get('points', 10) or 10),
-                'order': int(i + 1),
-            } for i, x in enumerate(po)], ensure_ascii=False))
+            params.append(json.dumps(self._normalize_problem_order(po), ensure_ascii=False))
         if 'start_at' in data:
             sets.append('start_at = ?'); params.append(data.get('start_at') or None)
-        if 'due_at' in data:
-            sets.append('due_at = ?'); params.append(data.get('due_at') or None)
+        if 'due_at' in data or 'end_at' in data:
+            due_at = data.get('due_at') if 'due_at' in data else data.get('end_at')
+            sets.append('due_at = ?'); params.append(due_at or None)
         if 'flags' in data and isinstance(data['flags'], dict):
             merged = dict(existing['flags']); merged.update({k: bool(v) for k, v in data['flags'].items() if k in merged})
             sets.append('flags = ?'); params.append(json.dumps(merged, ensure_ascii=False))
@@ -2046,13 +2290,34 @@ class UserDatabase:
         with self._connect() as conn:
             cur = conn.execute('SELECT * FROM assignment_user_status WHERE assignment_id = ? AND user_id = ?', (int(assignment_id), int(user_id)))
             row = cur.fetchone()
+            submit_count = conn.execute(
+                'SELECT COUNT(*) AS c FROM submissions WHERE assignment_id = ? AND user_id = ?',
+                (int(assignment_id), int(user_id)),
+            ).fetchone()['c']
+            solved_count = 0
+            for p in a.get('problem_order') or []:
+                pid = str(p.get('problem_id') or '').strip()
+                if not pid:
+                    continue
+                best = conn.execute(
+                    '''SELECT score, status FROM submissions
+                       WHERE assignment_id = ? AND user_id = ? AND problem_id = ?
+                       ORDER BY score DESC, total_time_ms ASC LIMIT 1''',
+                    (int(assignment_id), int(user_id), pid),
+                ).fetchone()
+                if best and str(best['status'] or '').upper() == 'AC':
+                    solved_count += 1
         detail = self._parse_json_field((row or {}).get('detail'), {}) if row else {}
+        total_score = float(row['total_score'] or 0) if row else 0.0
         return {
             'assignment_id': int(assignment_id),
             'user_id': int(user_id),
             'started_at': row['started_at'] if row else None,
             'last_sub_at': row['last_sub_at'] if row else None,
-            'total_score': float(row['total_score'] or 0) if row else 0.0,
+            'total_score': total_score,
+            'score': total_score,
+            'submit_count': int(submit_count or 0),
+            'solved_count': int(solved_count or 0),
             'detail': detail or {},
         }
 
@@ -2061,7 +2326,7 @@ class UserDatabase:
         if row is None:
             return None
         flags = self._parse_json_field(row['flags'], {}) or {}
-        po = self._parse_json_field(row['problem_order'], []) or []
+        po = self._normalize_problem_order(self._parse_json_field(row['problem_order'], []) or [])
         ac = self._parse_json_field(row['audience_classes'], []) or []
         aeu = self._parse_json_field(row['audience_extra_users'], []) or []
         total_points = sum(int(p.get('points', 0) or 0) for p in po)
@@ -2133,24 +2398,28 @@ class UserDatabase:
         }
         flags = dict(default_flags); flags.update({k: bool(v) for k, v in (data.get('flags') or {}).items() if k in default_flags})
         now = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-        problem_order = data.get('problem_order') or []
-        audience_classes = data.get('classes') or data.get('audience_classes') or []
+        problem_order = data.get('problem_order')
+        if problem_order is None and 'problem_ids' in data:
+            problem_order = data.get('problem_ids') or []
+        audience_classes = data.get('classes') or data.get('audience_classes')
+        if audience_classes is None and data.get('class_id') is not None:
+            audience_classes = [data.get('class_id')]
+        audience_classes = audience_classes or []
         audience_extra = data.get('extra_users') or data.get('audience_extra_users') or []
+        normalized_problem_order = self._normalize_problem_order(problem_order)
         with self._connect() as conn:
             cur = conn.execute(
                 '''INSERT INTO exams (title, description, creator_admin_id, mode, duration_minutes, audience_classes, audience_extra_users, problem_order, start_at, end_at, flags, score_published, created_at, updated_at)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)''',
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
                 (
                     title, (data.get('description') or '').strip(), int(operator_id), mode, duration,
                     json.dumps([int(x) for x in audience_classes], ensure_ascii=False),
                     json.dumps([int(x) for x in audience_extra], ensure_ascii=False),
-                    json.dumps([{
-                        'problem_id': str(x.get('problem_id') or x.get('pid') or ''),
-                        'points': int(x.get('points', 10) or 10),
-                        'order': int(i + 1),
-                    } for i, x in enumerate(problem_order)], ensure_ascii=False),
+                    json.dumps(normalized_problem_order, ensure_ascii=False),
                     data.get('start_at') or None, data.get('end_at') or None,
-                    json.dumps(flags, ensure_ascii=False), now, now,
+                    json.dumps(flags, ensure_ascii=False),
+                    1 if bool(data.get('score_published', False)) else 0,
+                    now, now,
                 ),
             )
             new_id = int(cur.lastrowid)
@@ -2169,13 +2438,9 @@ class UserDatabase:
             (('description',), 'description', lambda v: str(v or '').strip()),
             (('mode',), 'mode', lambda v: int(v) if int(v) in (1, 2) else None),
             (('duration_minutes',), 'duration_minutes', lambda v: int(v or 0)),
-            (('classes', 'audience_classes'), 'audience_classes', lambda v: json.dumps([int(x) for x in (v or [])], ensure_ascii=False)),
+            (('class_id', 'classes', 'audience_classes'), 'audience_classes', lambda v: json.dumps([int(x) for x in (([v] if not isinstance(v, (list, tuple)) else v) or [])], ensure_ascii=False)),
             (('extra_users', 'audience_extra_users'), 'audience_extra_users', lambda v: json.dumps([int(x) for x in (v or [])], ensure_ascii=False)),
-            (('problem_order',), 'problem_order', lambda v: json.dumps([{
-                'problem_id': str(x.get('problem_id') or x.get('pid') or ''),
-                'points': int(x.get('points', 10) or 10),
-                'order': int(i + 1),
-            } for i, x in enumerate(v or [])], ensure_ascii=False)),
+            (('problem_order', 'problem_ids'), 'problem_order', lambda v: json.dumps(self._normalize_problem_order(v), ensure_ascii=False)),
             (('start_at',), 'start_at', lambda v: v or None),
             (('end_at',), 'end_at', lambda v: v or None),
         ]:

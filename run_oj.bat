@@ -16,7 +16,7 @@ for %%P in (5000 8501) do (
   powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-NetTCPConnection -LocalPort %%P -State Listen -ErrorAction SilentlyContinue | Select-Object -ExpandProperty OwningProcess -Unique | ForEach-Object { try { Stop-Process -Id $_ -Force -ErrorAction Stop } catch {} }" >nul 2>nul
 )
 
-start "OJ FastAPI" cmd /k "cd /d ""%WEBAPP%"" && python app_fastapi.py"
+start "OJ FastAPI" cmd /k "cd /d ""%WEBAPP%"" && python -m uvicorn app_fastapi:app --host 127.0.0.1 --port 5000 --reload"
 start "OJ Streamlit" cmd /k "cd /d ""%WEBAPP%"" && set OJ_API_BASE=http://127.0.0.1:5000 && streamlit run app_streamlit.py --server.port 8501 --server.headless true"
 
 echo 已分别打开 FastAPI 与 Streamlit 窗口。
