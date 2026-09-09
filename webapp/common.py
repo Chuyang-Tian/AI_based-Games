@@ -2,6 +2,7 @@
 """Streamlit 多页面公共模块。"""
 
 import os
+from urllib.parse import urlencode
 from urllib.parse import quote as url_quote
 
 import requests
@@ -15,7 +16,9 @@ ROUTE = {
     'home': 'app_streamlit.py',
     'judge': 'pages/⚖️_判题器.py',
     'problems': 'pages/🗂_题目管理.py',
+    'problem_detail': 'pages/📄_题目详情.py',
     'submissions': 'pages/📋_提交日志.py',
+    'submission_detail': 'pages/🧾_提交详情.py',
     'users': 'pages/👥_用户管理.py',
     'ai': 'pages/🤖_AI命题.py',
     'ai_config': 'pages/⚙️_AI配置.py',
@@ -41,7 +44,9 @@ ROUTE_TO_SLUG = {
     'home': '',
     'judge': '判题器',
     'problems': '题目管理',
+    'problem_detail': '题目详情',
     'submissions': '提交日志',
+    'submission_detail': '提交详情',
     'users': '用户管理',
     'ai': 'AI命题',
     'ai_config': 'AI配置',
@@ -163,6 +168,19 @@ def require_admin_error():
 
 def clear_problem_cache():
     st.session_state.pop('_all_problems', None)
+
+
+def page_url(route_key, **query_kwargs):
+    slug = ROUTE_TO_SLUG.get(route_key, '')
+    base = '/' if not slug else f'/{url_quote(slug)}'
+    params = {}
+    for key, value in query_kwargs.items():
+        if value is None or value == '':
+            continue
+        params[str(key)] = str(value)
+    if not params:
+        return base
+    return f'{base}?{urlencode(params)}'
 
 
 def goto(route_key, **query_kwargs):

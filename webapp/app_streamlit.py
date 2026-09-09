@@ -3,13 +3,12 @@
 OJ 判题首页（Streamlit 原生组件版）
 """
 import sys, os, random
-from urllib.parse import quote as _quote
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import streamlit as st
 from common import (
     ensure_init, render_topbar, render_subheader,
     current_user, require_login_error,
-    load_all_problems, get_filtered_problems, toast_safe, goto,
+    load_all_problems, get_filtered_problems, page_url, toast_safe,
 )
 
 st.set_page_config(page_title='OJ 调试平台 · 判题首页', page_icon='💻',
@@ -71,9 +70,9 @@ with col_left:
                 toast_safe('题库已刷新', 'ok')
                 st.rerun()
         with b2:
-            if st.button('⚡ 随机选题', use_container_width=True, key='home_random') and problems:
+            if problems:
                 pick = random.choice(problems)
-                goto('judge', id=pick['id'])
+                st.link_button('⚡ 随机选题', page_url('problem_detail', id=pick['id']), use_container_width=True)
 
 with col_right:
     # 顶部四宫格统计
@@ -87,7 +86,7 @@ with col_right:
     sel_tags = set(st.session_state.get('home_tags') or [])
     filtered = get_filtered_problems(problems, st.session_state.get('home_search', ''),
                                      st.session_state.get('home_diff', ''), list(sel_tags))
-    st.caption(f'当前筛选后共 **{len(filtered)}** 道题目。点击右侧「➜ 判题」进入独立判题页（URL 独立，可刷新/后退）。')
+    st.caption(f'当前筛选后共 **{len(filtered)}** 道题目。先进入独立题目页查看题面，再按需跳转到判题页或提交记录页。')
 
     if not filtered:
         st.info('（没有匹配的题目，请调整搜索或筛选条件）')
@@ -104,7 +103,8 @@ with col_right:
                 ml = p.get('memory_limit') or '?'
                 desc_summary = (p.get('description') or '')[:80]
                 top1, top2, top3 = st.columns([7, 1, 1])
-                judge_url = '/判题器?id=' + _quote(str(pid))
+                detail_url = page_url('problem_detail', id=pid)
+                judge_url = page_url('judge', id=pid)
                 with top1:
                     st.subheader(f'{pid}  ·  {title}', divider=False)
                     cap = f'难度: {diff or "-"}  |  作者: {author}  |  TL: {tl}s  |  ML: {ml}MB'
@@ -114,7 +114,7 @@ with col_right:
                     st.caption(desc_summary + (' …' if len(desc_summary) >= 80 else ''))
                 with top2:
                     st.caption(' ')
-                    st.link_button('详情', judge_url, use_container_width=True,
+                    st.link_button('详情', detail_url, use_container_width=True,
                                    key=f'detail_btn_{pid}')
                 with top3:
                     st.caption(' ')

@@ -2,7 +2,7 @@
 """
 判题器（Streamlit 原生组件版，URL 通过 ?id=xxx 传递题目 ID，支持刷新保持）
 """
-import sys, os, time, difflib, json
+import sys, os, time, json
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import streamlit as st
 
@@ -12,7 +12,7 @@ st.set_page_config(page_title='判题器 · OJ', page_icon='⚖️', layout='wid
 from common import (
     ensure_init, render_topbar, render_subheader,
     current_user, require_login_error, is_admin,
-    load_all_problems, load_languages, api, toast_safe, goto,
+    load_all_problems, load_languages, api, page_url, toast_safe,
 )
 
 LANG_DEFAULT_CODE = {
@@ -33,8 +33,7 @@ else:
     pid = str(raw_pid)
 if not pid:
     st.info('⚠️ 没有指定题目 ID（URL 需包含 ?id=xxx）。')
-    if st.button('← 返回首页', type='primary'):
-        goto('home')
+    st.link_button('← 返回首页', page_url('home'), type='primary', use_container_width=True)
     st.stop()
 
 problems = load_all_problems()
@@ -58,8 +57,7 @@ if not user:
 
 if not problem:
     st.error(f'❌ 题目 `{pid}` 不存在。')
-    if st.button('← 返回首页', type='primary'):
-        goto('home')
+    st.link_button('← 返回首页', page_url('home'), type='primary', use_container_width=True)
     st.stop()
 problem = problem or {}
 
@@ -122,9 +120,7 @@ with header_card:
     with t2:
         st.caption('')
         st.caption('')
-        if st.button('← 返回题库', use_container_width=True,
-                     on_click=goto, kwargs={'route_key': 'problems'}):
-            pass
+        st.link_button('← 返回题目页', page_url('problem_detail', id=p_id), use_container_width=True)
 
     m1, m2, m3 = st.columns(3)
     m1.metric('⏱ 时间限制', f'{p_tl} s')
@@ -416,76 +412,11 @@ with col_right:
                 st.progress(min(score / denom, 1.0) if denom > 0 else 0.0)
             st.caption(f'📋 Submission #{sid} · 语言 {lang} · 通过 {passed}/{total} 个测试点 · 提交于 {ct}')
 
-            # 加载详情
-            @st.cache_data(show_spinner=False, ttl=60)
-            def load_detail(sid):
-                c, d, _ = api('GET', f'/api/submissions/{sid}')
-                if c == 200 and d and d.get('data'):
-                    return d['data']
-                return None
-
-            detail = load_detail(str(sid))
-            cases = None
-            if detail:
-                c3, d3, _ = api('GET', f'/api/submissions/{sid}/log')
-                if c3 == 200 and isinstance(d3, dict) and isinstance(d3.get('data'), dict):
-                    cases = d3['data'].get('details') or None
-
-            if not cases:
-                st.caption('（暂无逐测试点详情）')
-            else:
-                st.markdown('#### 逐个测试点详情')
-                for i, cs in enumerate(cases):
-                    if not isinstance(cs, dict):
-                        continue
-                    cs_status = cs.get('status') or cs.get('result') or '??'
-                    cs_time = cs.get('time_ms') or cs.get('time') or 0
-                    cs_mem_kb = cs.get('memory_kb') or 0
-                    cs_mem_mb = round(cs_mem_kb / 1024, 2) if cs_mem_kb else round(float(cs.get('memory') or 0), 2)
-                    cs_in = cs.get('input')
-                    cs_exp = cs.get('expected')
-                    cs_act = cs.get('actual')
-                    cs_err = cs.get('stderr') or cs.get('error')
-                    with st.expander(
-                        f'#{i+1}  Test {i+1}   [{cs_status}]   ⏱ {cs_time}ms · 💾 {cs_mem_mb}MB',
-                        expanded=(cs_status != 'AC')
-                    ):
-                        a, b = st.columns(2)
-                        with a:
-                            status_badge(cs_status)
-                        with b:
-                            st.caption(f'⏱ {cs_time} ms  ·  💾 {cs_mem_mb} MB')
-                        if cs_in is not None:
-                            st.caption('🔤 Input')
-                            st.code(cs_in, language=None)
-                        else:
-                            st.info('🔒 无权查看该测试点 Input')
-                        col_exp, col_act = st.columns(2)
-                        with col_exp:
-                            if cs_exp is not None:
-                                st.caption('✅ Expected')
-                                st.code(cs_exp, language=None)
-                            else:
-                                st.info('🔒 无权查看 Expected')
-                        with col_act:
-                            if cs_act is not None:
-                                st.caption('💻 Actual')
-                                st.code(cs_act, language=None)
-                            else:
-                                st.info('🔒 无权查看 Actual')
-                        if cs_err:
-                            st.caption('❌ 错误/异常')
-                            st.code(cs_err, language=None)
-                        if cs_status == 'WA' and cs_exp is not None and cs_act is not None:
-                            with st.expander('🔍 Line-by-line Diff（期望 vs 实际）', expanded=True):
-                                diff = list(difflib.unified_diff(
-                                    (cs_exp or '').splitlines(keepends=True),
-                                    (cs_act or '').splitlines(keepends=True),
-                                    fromfile='Expected', tofile='Actual', lineterm=''
-                                ))
-                                if not diff:
-                                    st.caption('内容逐行一致，可能是行尾空格/换行差异导致 WA，可切换 Trim 模式重试。')
-                                else:
-                                    st.code('\n'.join(diff), language='diff')
+            st.caption('详细编译日志、测试点信息和权限校验后的可见内容，已移到独立提交详情页。')
+            d_left, d_right = st.columns(2)
+            with d_left:
+                st.link_button('查看本次提交详情', page_url('submission_detail', id=sid), type='primary', use_container_width=True)
+            with d_right:
+                st.link_button('查看该题题面', page_url('problem_detail', id=p_id), use_container_width=True)
 
 st.caption('© OJ 在线判题平台 · Streamlit 前端 + FastAPI 后端（Python 双栈架构）')
