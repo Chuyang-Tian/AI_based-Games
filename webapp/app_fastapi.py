@@ -226,6 +226,13 @@ def serialize_result(result):
     }
 
 
+def _get_language_config(lang_name: str) -> dict:
+    lang = db.get_language(str(lang_name or '').strip())
+    if lang:
+        return lang
+    return {'name': str(lang_name or 'python').strip().lower()}
+
+
 def _user_public_viewer(user, viewer=None):
     pub = user.to_public()
     is_self = viewer and viewer.user_id == user.user_id
@@ -646,11 +653,8 @@ async def _do_judge_bg(sid, pid, lang_name, code, uid,
             default_memory_limit=memory_limit,
             compare_mode=compare_mode,
         )
-        try:
-            lang_enum = getattr(Language, str(lang_name).upper(), Language.PYTHON)
-        except Exception:
-            lang_enum = Language.PYTHON
-        result = await asyncio.to_thread(judger.judge, code, test_cases, lang_enum)
+        lang_config = await asyncio.to_thread(_get_language_config, lang_name)
+        result = await asyncio.to_thread(judger.judge, code, test_cases, lang_config)
         serialized = serialize_result(result)
         cr_json = json.dumps(serialized['case_results'], ensure_ascii=False)
         total = result.total_cases
@@ -869,6 +873,7 @@ async def api_judge(request: Request):
         return _api_response(400, '无效的请求体')
     code = data.get('code', '')
     problem_id = data.get('problem_id', '')
+    language = str(data.get('language') or 'python').strip().lower()
     custom_cases = data.get('custom_cases', [])
     use_samples = data.get('use_samples', True)
     only_custom_cases = bool(data.get('only_custom_cases', False))
@@ -936,12 +941,20 @@ async def api_judge(request: Request):
     if not test_cases:
         return _api_response(400, '没有可用的测试用例，请至少勾选样例或添加自定义用例。')
 
+    if user.role == USER_ROLE_ADMIN:
+        lang_names = await asyncio.to_thread(db.list_languages, just_names=True)
+    else:
+        lang_names = await asyncio.to_thread(db.list_enabled_languages, just_names=True)
+    if language not in lang_names:
+        return _api_response(404, f'语言 [{language}] 不存在或未启用')
+
     judger = Judger(
         default_time_limit=time_limit,
         default_memory_limit=memory_limit,
         compare_mode=compare_mode,
     )
-    result = await asyncio.to_thread(judger.judge, code, test_cases, Language.PYTHON)
+    lang_config = await asyncio.to_thread(_get_language_config, language)
+    result = await asyncio.to_thread(judger.judge, code, test_cases, lang_config)
     serialized = serialize_result(result)
     serialized['cases'] = serialized['case_results']
 
@@ -2541,6 +2554,137 @@ def _run_generation_logic(payload, task_uuid, sse_q, user_id):
                       error_msg=f'{e}', started_at=started_ms, finished_at=_now_ms())
 
 
+def _parse_constraint_upper_bound(text: str, symbol: str) -> Optional[int]:
+    source = str(text or '')
+    token = re.escape(symbol).replace('\\ ', r'\s*')
+    patterns = [
+        rf'{token}\s*[≤<=]+\s*(10\^\d+|\d+)',
+        rf'{token}\s*[<]\s*=\s*(10\^\d+|\d+)',
+    ]
+    values = []
+    for pattern in patterns:
+        for m in re.finditer(pattern, source, flags=re.I):
+            raw = m.group(1).strip()
+            if raw.startswith('10^'):
+                try:
+                    values.append(10 ** int(raw[3:]))
+                except Exception:
+                    continue
+            else:
+                try:
+                    values.append(int(raw))
+                except Exception:
+                    continue
+    return max(values) if values else None
+
+
+def _infer_line_array_case_shape(cases: list) -> Optional[dict]:
+    n_values = []
+    for case in cases[: min(len(cases), 5)]:
+        if not isinstance(case, dict):
+            return None
+        raw_input = str(case.get('input') or '')
+        lines = [line.strip() for line in raw_input.splitlines() if line.strip()]
+        if len(lines) != 2:
+            return None
+        head = lines[0].split()
+        arr = lines[1].split()
+        if len(head) != 3:
+            return None
+        try:
+            n = int(head[0])
+            if n <= 0 or len(arr) != n:
+                return None
+            _ = int(head[1]); _ = int(head[2])
+            for token in arr[: min(8, len(arr))]:
+                int(token)
+        except Exception:
+            return None
+        n_values.append(n)
+    if not n_values:
+        return None
+    return {'max_seen_n': max(n_values), 'min_seen_n': min(n_values)}
+
+
+def _augment_line_array_cases(problem_json: dict, verified_cases: list, wanted_case_count: int, tmp_root: str) -> list:
+    description_blob = '\n'.join([
+        str(problem_json.get('description') or ''),
+        str(problem_json.get('constraints') or ''),
+    ])
+    shape = _infer_line_array_case_shape(verified_cases or problem_json.get('test_cases') or [])
+    if not shape:
+        return verified_cases
+    max_n = _parse_constraint_upper_bound(description_blob, 'N') or shape['max_seen_n']
+    if max_n <= max(64, shape['max_seen_n'] * 4):
+        return verified_cases
+    public_cases = [c for c in (verified_cases or []) if c.get('visibility') == 'public'][:2]
+    hidden_score = 20
+    hidden_existing = [c for c in (verified_cases or []) if c.get('visibility') == 'hidden']
+    if hidden_existing:
+        try:
+            hidden_score = int(hidden_existing[0].get('score') or hidden_score)
+        except Exception:
+            pass
+    rng = __import__('random').Random(42)
+    hidden_needed = max(2, wanted_case_count - len(public_cases))
+    n_candidates = [
+        max_n,
+        max_n,
+        max_n,
+        max(128, max_n - 1),
+        max(128, max_n // 2),
+        max(128, max_n // 3),
+        max(128, max_n // 4),
+    ]
+    l_candidates = [
+        max_n,
+        max_n,
+        max(2, max_n // 2),
+        max(2, max_n // 10),
+        2,
+        1,
+    ]
+    stress_cases = []
+    solution_path = os.path.join(tmp_root, 'solution.py')
+    for idx in range(hidden_needed * 2):
+        n = n_candidates[idx % len(n_candidates)]
+        l = min(max(1, l_candidates[idx % len(l_candidates)]), n)
+        arr = [rng.randint(1, 10**6) for _ in range(n)]
+        if idx % 4 == 0:
+            k = sum(arr) + 1
+        elif idx % 4 == 1:
+            k = sum(arr[: max(1, min(n, l + 1))])
+        elif idx % 4 == 2:
+            k = sum(arr[:: max(1, n // max(2, l))])
+        else:
+            k = max(arr) * max(2, n // max(1, l))
+        in_txt = f"{n} {l} {k}\n" + ' '.join(map(str, arr)) + '\n'
+        try:
+            p = __import__('subprocess').run(
+                [sys.executable, 'solution.py'],
+                cwd=tmp_root,
+                input=in_txt.encode('utf-8'),
+                capture_output=True,
+                timeout=20,
+            )
+            out_txt = p.stdout.decode('utf-8', errors='replace').rstrip() + '\n'
+        except Exception:
+            continue
+        if not out_txt.strip():
+            continue
+        stress_cases.append({
+            'input': in_txt,
+            'output': out_txt,
+            'score': hidden_score,
+            'visibility': 'hidden',
+        })
+        if len(stress_cases) >= hidden_needed:
+            break
+    if not stress_cases:
+        return verified_cases
+    return public_cases + stress_cases
+
+
 def _generate_and_run_cases(problem_json, payload, task_uuid, push, engine, messages):
     """
     Task6：子模块2 - AI 写 generate_test.py → subprocess.run 真跑 → cases 数组回填。
@@ -2627,6 +2771,10 @@ for i in range(N_CASES):
             pass
     if not verified_cases:
         verified_cases = cases
+    strengthened_cases = _augment_line_array_cases(problem_json, verified_cases, wanted_case_count, tmp_root)
+    if strengthened_cases and strengthened_cases is not verified_cases:
+        verified_cases = strengthened_cases
+        stdout_all = (stdout_all + '\n' if stdout_all else '') + f'[augment] strengthened hidden cases to {len(verified_cases)}'
     return {
         'mock': False,
         'script_code': script_code,

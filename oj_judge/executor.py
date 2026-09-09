@@ -4,7 +4,8 @@ import subprocess
 import tempfile
 import threading
 import time
-from typing import Tuple, Optional
+import shutil
+from typing import Optional
 from dataclasses import dataclass
 
 
@@ -18,6 +19,20 @@ class ExecutionResult:
     timed_out: bool
     memory_exceeded: bool
 
+
+@dataclass
+class PreparedProgram:
+    language: str
+    workdir: str
+    source_file: str
+    run_command: str
+    tempdir_obj: tempfile.TemporaryDirectory
+
+    def cleanup(self):
+        try:
+            self.tempdir_obj.cleanup()
+        except Exception:
+            pass
 
 class CodeExecutor:
     def __init__(self, time_limit: float = 1.0, memory_limit: int = 128):
@@ -35,30 +50,212 @@ class CodeExecutor:
         self,
         code: str,
         input_data: str,
-        language: str = 'python'
+        language='python'
     ) -> ExecutionResult:
-        with tempfile.TemporaryDirectory() as tmpdir:
-            code_file = os.path.join(tmpdir, f'solution{self._get_extension(language)}')
-            with open(code_file, 'w', encoding='utf-8') as f:
+        prepared, compile_msg = self.prepare(code, language)
+        if compile_msg:
+            return ExecutionResult(
+                stdout='',
+                stderr=compile_msg,
+                return_code=1,
+                time_used=0.0,
+                memory_used=0.0,
+                timed_out=False,
+                memory_exceeded=False,
+            )
+        try:
+            return self.execute_prepared(prepared, input_data)
+        finally:
+            prepared.cleanup()
+
+    def prepare(self, code: str, language='python') -> tuple[Optional[PreparedProgram], str]:
+        spec = self._normalize_language_spec(language)
+        language_name = spec['name']
+        tempdir_obj = tempfile.TemporaryDirectory()
+        workdir = tempdir_obj.name
+        source_base = 'Main' if language_name.startswith('java') else 'solution'
+        source_file = os.path.join(workdir, f"{source_base}{spec['file_ext']}")
+
+        try:
+            with open(source_file, 'w', encoding='utf-8') as f:
                 f.write(code)
+        except Exception as e:
+            tempdir_obj.cleanup()
+            return None, f'写入源代码失败: {e}'
 
-            input_file = os.path.join(tmpdir, 'stdin.txt')
-            with open(input_file, 'w', encoding='utf-8') as f:
-                f.write(input_data)
+        if language_name in ('python', 'python3'):
+            try:
+                compile(code, source_file, 'exec')
+            except SyntaxError as e:
+                tempdir_obj.cleanup()
+                return None, f'SyntaxError at line {e.lineno}: {e.msg}\n{e.text}'
+            except Exception as e:
+                tempdir_obj.cleanup()
+                return None, f'Compile check error: {e}'
 
-            return self._run_subprocess(code_file, input_file, tmpdir)
+        binary_name = 'solution_exec.exe' if os.name == 'nt' else 'solution_exec'
+        binary_file = os.path.join(workdir, binary_name)
+        tokens = self._build_command_tokens(
+            source_file=source_file,
+            binary_file=binary_file,
+            workdir=workdir,
+        )
 
-    def _get_extension(self, language: str) -> str:
-        return '.py'
+        compile_cmd = spec.get('compile_cmd')
+        if compile_cmd:
+            compile_result = self._run_compile_command(
+                self._format_command(compile_cmd, tokens),
+                workdir,
+            )
+            compile_output = '\n'.join(
+                part for part in [compile_result.stdout.strip(), compile_result.stderr.strip()] if part
+            ).strip()
+            if compile_result.returncode != 0:
+                tempdir_obj.cleanup()
+                return None, compile_output or f'Compile command failed with exit code {compile_result.returncode}'
+
+        run_command = self._format_command(spec['run_cmd'], tokens)
+        return PreparedProgram(
+            language=language_name,
+            workdir=workdir,
+            source_file=source_file,
+            run_command=run_command,
+            tempdir_obj=tempdir_obj,
+        ), ''
+
+    def execute_prepared(self, prepared: PreparedProgram, input_data: str) -> ExecutionResult:
+        return self._run_subprocess(prepared.run_command, input_data, prepared.workdir)
+
+    def _normalize_language_spec(self, language) -> dict:
+        if isinstance(language, dict):
+            raw_name = str(language.get('name') or 'python').strip().lower()
+            built_in = self._normalize_language_spec(raw_name)
+            compile_cmd = language.get('compile_cmd') if language.get('compile_cmd') else built_in.get('compile_cmd')
+            return {
+                'name': raw_name,
+                'file_ext': str(language.get('file_ext') or built_in.get('file_ext') or '.txt').strip(),
+                'compile_cmd': self._normalize_compile_command(compile_cmd),
+                'run_cmd': str(language.get('run_cmd') or built_in.get('run_cmd') or '{src}').strip(),
+            }
+        lang = str(language or 'python').strip().lower()
+        if lang in ('python', 'python3'):
+            return {
+                'name': lang,
+                'file_ext': '.py',
+                'compile_cmd': None,
+                'run_cmd': '{python} -u -B {src}',
+            }
+        if lang in ('cpp', 'cpp17', 'c++', 'c++17'):
+            compiler = self._resolve_cpp_compiler()
+            return {
+                'name': 'cpp',
+                'file_ext': '.cpp',
+                'compile_cmd': f'{self._quote(compiler)} -O2 -std=c++17 {{src}} -o {{bin}}' if compiler else 'g++ -O2 -std=c++17 {src} -o {bin}',
+                'run_cmd': '{bin}',
+            }
+        return {
+            'name': lang,
+            'file_ext': '.txt',
+            'compile_cmd': None,
+            'run_cmd': '{src}',
+        }
+
+    def _build_command_tokens(self, source_file: str, binary_file: str, workdir: str) -> dict:
+        return {
+            'src': self._quote(source_file),
+            'bin': self._quote(binary_file),
+            'workdir': self._quote(workdir),
+            'python': self._quote(sys.executable),
+            'src_name': os.path.basename(source_file),
+            'bin_name': os.path.basename(binary_file),
+            'main_class': 'Main',
+        }
+
+    def _quote(self, value: str) -> str:
+        return '"' + str(value).replace('"', '\\"') + '"'
+
+    def _format_command(self, command_template: str, tokens: dict) -> str:
+        try:
+            return str(command_template).format(**tokens)
+        except KeyError as e:
+            missing = getattr(e, 'args', ['?'])[0]
+            raise RuntimeError(f'语言命令模板缺少占位符: {missing}')
+
+    def _run_compile_command(self, command: str, workdir: str):
+        try:
+            return subprocess.run(
+                command,
+                shell=True,
+                cwd=workdir,
+                env=self._build_subprocess_env(),
+                text=True,
+                encoding='utf-8',
+                errors='replace',
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=max(20.0, self.time_limit * 5),
+            )
+        except subprocess.TimeoutExpired as e:
+            return subprocess.CompletedProcess(
+                args=command,
+                returncode=124,
+                stdout=e.stdout or '',
+                stderr=(e.stderr or '') + '\n编译超时',
+            )
+        except FileNotFoundError as e:
+            return subprocess.CompletedProcess(
+                args=command,
+                returncode=127,
+                stdout='',
+                stderr=str(e),
+            )
+        except Exception as e:
+            return subprocess.CompletedProcess(
+                args=command,
+                returncode=1,
+                stdout='',
+                stderr=f'Compile command error: {e}',
+            )
+
+    def _resolve_cpp_compiler(self) -> str:
+        candidates = [
+            shutil.which('g++.exe'),
+            shutil.which('g++'),
+            r'C:\msys64\ucrt64\bin\g++.exe',
+            r'C:\msys64\mingw64\bin\g++.exe',
+        ]
+        for candidate in candidates:
+            if candidate and os.path.exists(candidate):
+                return candidate
+        return ''
+
+    def _normalize_compile_command(self, command_template: Optional[str]) -> Optional[str]:
+        if not command_template:
+            return command_template
+        text = str(command_template).strip()
+        if text.startswith('g++ '):
+            compiler = self._resolve_cpp_compiler()
+            if compiler:
+                return f'{self._quote(compiler)}{text[3:]}'
+        return text
+
+    def _build_subprocess_env(self) -> dict:
+        env = os.environ.copy()
+        compiler = self._resolve_cpp_compiler()
+        if compiler:
+            compiler_dir = os.path.dirname(compiler)
+            current_path = env.get('PATH') or ''
+            parts = current_path.split(os.pathsep) if current_path else []
+            if compiler_dir and compiler_dir not in parts:
+                env['PATH'] = compiler_dir + os.pathsep + current_path if current_path else compiler_dir
+        return env
 
     def _run_subprocess(
         self,
-        code_file: str,
-        input_file: str,
+        command: str,
+        input_data: str,
         workdir: str
     ) -> ExecutionResult:
-        cmd = [sys.executable, '-u', '-B', code_file]
-
         stdout_container: list[str] = ['']
         stderr_container: list[str] = ['']
         memory_peak_container: list[float] = [0.0]
@@ -70,19 +267,19 @@ class CodeExecutor:
         def target():
             nonlocal process
             try:
-                with open(input_file, 'r', encoding='utf-8') as stdin_f:
-                    process = subprocess.Popen(
-                        cmd,
-                        stdin=stdin_f,
-                        stdout=subprocess.PIPE,
-                        stderr=subprocess.PIPE,
-                        cwd=workdir,
-                        text=True,
-                        encoding='utf-8',
-                        errors='replace',
-                        bufsize=1,
-                    )
-
+                process = subprocess.Popen(
+                    command,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    cwd=workdir,
+                    env=self._build_subprocess_env(),
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace',
+                    bufsize=1,
+                    shell=True,
+                )
                 self._start_memory_monitor(
                     process,
                     memory_peak_container,
@@ -90,7 +287,7 @@ class CodeExecutor:
                     stop_monitor,
                 )
 
-                out, err = process.communicate()
+                out, err = process.communicate(input=input_data)
                 stdout_container[0] = out or ''
                 stderr_container[0] = err or ''
             except Exception as e:

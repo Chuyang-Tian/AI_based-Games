@@ -31,18 +31,28 @@ class JudgeStatus(str, Enum):
 class Language(str, Enum):
     PYTHON = 'python'
     PYTHON3 = 'python3'
+    CPP = 'cpp'
+    CPP17 = 'cpp17'
 
     @property
     def command(self) -> str:
         commands = {
             Language.PYTHON: 'python',
             Language.PYTHON3: 'python',
+            Language.CPP: 'g++',
+            Language.CPP17: 'g++',
         }
         return commands.get(self, 'python')
 
     @property
     def extension(self) -> str:
-        return '.py'
+        extensions = {
+            Language.PYTHON: '.py',
+            Language.PYTHON3: '.py',
+            Language.CPP: '.cpp',
+            Language.CPP17: '.cpp',
+        }
+        return extensions.get(self, '.py')
 
 
 DEFAULT_TIME_LIMIT = 1.0

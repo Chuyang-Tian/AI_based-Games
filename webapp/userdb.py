@@ -4,6 +4,7 @@ import json
 import hashlib
 import hmac
 import secrets
+import shutil
 import uuid
 from datetime import datetime
 from typing import Optional, List, Tuple, Any
@@ -28,6 +29,19 @@ DEFAULT_DB_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     'data', 'oj.db'
 )
+
+
+def find_cpp_compiler() -> str:
+    candidates = [
+        shutil.which('g++.exe'),
+        shutil.which('g++'),
+        r'C:\msys64\ucrt64\bin\g++.exe',
+        r'C:\msys64\mingw64\bin\g++.exe',
+    ]
+    for candidate in candidates:
+        if candidate and os.path.exists(candidate):
+            return candidate
+    return ''
 
 
 def hash_password(password: str) -> str:
@@ -341,6 +355,16 @@ class UserDatabase:
                 ''', ('python', '.py', None, 'python {src}', 3.0, 128, 1, now_l))
             except Exception:
                 pass
+            cpp_compiler = find_cpp_compiler()
+            if cpp_compiler:
+                try:
+                    conn.execute('''
+                        INSERT OR IGNORE INTO languages
+                        (name, file_ext, compile_cmd, run_cmd, default_time_limit, default_memory_limit, is_builtin, created_at, enabled, sort_order)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 1)
+                    ''', ('cpp', '.cpp', f'"{cpp_compiler}" -O2 -std=c++17 {{src}} -o {{bin}}', '{bin}', 3.0, 256, 1, now_l))
+                except Exception:
+                    pass
             conn.commit()
         self.ensure_seed_problems()
         self.ensure_seed_classes_assignments_exams()
@@ -2403,4 +2427,3 @@ class UserDatabase:
             submission_id, status, score, pass_cases, total_cases,
             total_time_ms, max_memory_mb, case_results_json_str,
         )
-

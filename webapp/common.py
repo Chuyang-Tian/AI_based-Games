@@ -4,8 +4,8 @@
 import html
 import os
 import re
-from urllib.parse import urlencode
 from urllib.parse import quote as url_quote
+
 
 import requests
 import streamlit as st
@@ -452,12 +452,14 @@ def login_dialog():
 def render_topbar(page_tag=''):
     user = current_user()
     with st.container(border=True):
-        left, middle, theme_col, right = st.columns([4, 3, 2, 3])
+        left, middle, build_col, theme_col, right = st.columns([4, 2.5, 1.5, 2, 3])
         with left:
             st.subheader('💻 OJ 调试平台', divider=False)
         with middle:
             if page_tag:
                 st.caption(f'📌 {page_tag}')
+        with build_col:
+            st.caption(f'版本 {get_build_label()}')
         with theme_col:
             current_theme = get_theme_key()
             theme_key = st.selectbox(
@@ -484,6 +486,15 @@ def render_topbar(page_tag=''):
                 st.caption('当前未登录')
                 if st.button('登录 / 注册', key='topbar_login', type='primary', use_container_width=True):
                     login_dialog()
+
+
+@st.cache_data(show_spinner=False)
+def get_build_label():
+    default_label = 'version1.1'
+    forced_label = str(os.environ.get('OJ_BUILD_LABEL') or '').strip()
+    if forced_label:
+        return forced_label
+    return default_label
 
 
 def render_subheader(breadcrumb_parts, active_route='home'):

@@ -1,8 +1,4 @@
-import os
-import sys
-import tempfile
-import subprocess
-from typing import List, Optional, Callable
+from typing import List, Optional, Callable, Any
 from .constants import (
     JudgeStatus,
     Language,
@@ -10,7 +6,7 @@ from .constants import (
     DEFAULT_MEMORY_LIMIT,
 )
 from .models import TestCase, JudgeResult, SingleCaseResult
-from .executor import CodeExecutor, ExecutionResult
+from .executor import CodeExecutor, ExecutionResult, PreparedProgram
 from .comparator import OutputComparator
 
 
@@ -35,7 +31,7 @@ class Judger:
         self,
         code: str,
         test_cases: List[TestCase],
-        language: Language = Language.PYTHON,
+        language: Any = Language.PYTHON,
     ) -> JudgeResult:
         result = JudgeResult(
             status=JudgeStatus.PENDING,
@@ -43,7 +39,11 @@ class Judger:
             case_results=[],
         )
 
-        compile_msg = self._compile_check(code, language)
+        compile_executor = CodeExecutor(
+            time_limit=max(self.default_time_limit, 5.0),
+            memory_limit=max(self.default_memory_limit, 256),
+        )
+        prepared_program, compile_msg = compile_executor.prepare(code, self._normalize_language(language))
         if compile_msg:
             result.status = JudgeStatus.CE
             result.compile_message = compile_msg
@@ -65,24 +65,28 @@ class Judger:
         total_time = 0.0
         max_memory = 0.0
 
-        for i, tc in enumerate(test_cases):
-            if self.on_case_start:
-                self.on_case_start(i, tc)
+        try:
+            for i, tc in enumerate(test_cases):
+                if self.on_case_start:
+                    self.on_case_start(i, tc)
 
-            case_result = self._judge_single_case(code, tc, i, language)
-            case_result.is_sample = tc.is_sample
-            case_result.is_custom = tc.is_custom
-            result.case_results.append(case_result)
+                case_result = self._judge_single_case(prepared_program, tc, i)
+                case_result.is_sample = tc.is_sample
+                case_result.is_custom = tc.is_custom
+                result.case_results.append(case_result)
 
-            total_time += case_result.time_used
-            if case_result.memory_used > max_memory:
-                max_memory = case_result.memory_used
+                total_time += case_result.time_used
+                if case_result.memory_used > max_memory:
+                    max_memory = case_result.memory_used
 
-            if case_result.status == JudgeStatus.AC:
-                passed_count += 1
+                if case_result.status == JudgeStatus.AC:
+                    passed_count += 1
 
-            if self.on_case_end:
-                self.on_case_end(i, tc, case_result)
+                if self.on_case_end:
+                    self.on_case_end(i, tc, case_result)
+        finally:
+            if prepared_program is not None:
+                prepared_program.cleanup()
 
         result.passed_cases = passed_count
         result.total_time = total_time
@@ -105,21 +109,11 @@ class Judger:
 
         return result
 
-    def _compile_check(self, code: str, language: Language) -> str:
-        try:
-            compile(code, '<submission>', 'exec')
-            return ''
-        except SyntaxError as e:
-            return f'SyntaxError at line {e.lineno}: {e.msg}\n{e.text}'
-        except Exception as e:
-            return f'Compile check error: {e}'
-
     def _judge_single_case(
         self,
-        code: str,
+        prepared_program: PreparedProgram,
         tc: TestCase,
         index: int,
-        language: Language,
     ) -> SingleCaseResult:
         time_limit = tc.time_limit if tc.time_limit is not None else self.default_time_limit
         memory_limit = tc.memory_limit if tc.memory_limit is not None else self.default_memory_limit
@@ -127,10 +121,9 @@ class Judger:
         executor = CodeExecutor(time_limit=time_limit, memory_limit=memory_limit)
 
         try:
-            exec_result: ExecutionResult = executor.execute(
-                code=code,
+            exec_result: ExecutionResult = executor.execute_prepared(
+                prepared_program,
                 input_data=tc.input_data,
-                language=language.value,
             )
         except Exception as e:
             return SingleCaseResult(
@@ -219,6 +212,13 @@ class Judger:
                 error_message=f'输出不匹配\n---你的输出---\n{diff_a}\n---期望输出---\n{diff_e}',
                 is_sample=tc.is_sample,
             )
+
+    def _normalize_language(self, language: Any):
+        if isinstance(language, dict):
+            return language
+        if isinstance(language, Language):
+            return language.value
+        return str(language or 'python').strip().lower()
 
     def _compare_output(self, actual: str, expected: str) -> bool:
         if self.compare_mode == 'tokens':
