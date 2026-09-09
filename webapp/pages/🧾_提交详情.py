@@ -13,7 +13,7 @@ from common import (
     api,
     current_user,
     ensure_init,
-    page_url,
+    render_home_button,
     render_subheader,
     render_topbar,
     require_login_error,
@@ -36,7 +36,7 @@ render_subheader([('🏠 判题首页', 'home'), ('📋 提交日志', 'submissi
 
 if not sid:
     st.warning('缺少提交 ID。')
-    st.link_button('返回提交日志', page_url('submissions'), use_container_width=True)
+    render_home_button()
     st.stop()
 
 detail_code, detail_data, detail_err = api('GET', f'/api/submissions/{sid}')
@@ -46,18 +46,16 @@ log_detail = log_data.get('data') if log_code == 200 and isinstance(log_data, di
 
 if not detail:
     st.error(f'详情加载失败：{detail_data.get("msg") if isinstance(detail_data, dict) else detail_err}')
-    st.link_button('返回提交日志', page_url('submissions'), use_container_width=True)
+    render_home_button()
     st.stop()
 
 with st.container(border=True):
-    c1, c2, c3 = st.columns([5, 2, 2])
+    c1, c2 = st.columns([7, 2])
     with c1:
         st.subheader(f"提交 #{detail.get('submission_id') or sid}", divider=False)
         st.caption(f"题目 ID: {detail.get('problem_id')}  |  用户 ID: {detail.get('user_id')}  |  语言: {detail.get('language')}")
     with c2:
-        st.link_button('返回提交日志', page_url('submissions'), use_container_width=True)
-    with c3:
-        st.link_button('回到题目页', page_url('problem_detail', id=detail.get('problem_id')), use_container_width=True)
+        render_home_button()
 
     m1, m2, m3, m4 = st.columns(4)
     m1.metric('状态', detail.get('status', '-'))

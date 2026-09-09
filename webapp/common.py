@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """Streamlit 多页面公共模块。"""
 
+import html
 import os
 from urllib.parse import urlencode
 from urllib.parse import quote as url_quote
@@ -71,6 +72,8 @@ section[data-testid="stMain"] {
   max-width: 100% !important;
   margin: 0 auto !important;
   justify-content: center !important;
+  padding-top: 0.25rem !important;
+  overflow: visible !important;
 }
 div.block-container,
 div[data-testid="stMainBlockContainer"] {
@@ -79,10 +82,11 @@ div[data-testid="stMainBlockContainer"] {
   margin-left: auto !important;
   margin-right: auto !important;
   box-sizing: border-box;
-  padding-top: 1.25rem;
+  padding-top: 1.75rem;
   padding-bottom: 2rem;
   padding-left: 1.25rem;
   padding-right: 1.25rem;
+  overflow: visible !important;
 }
 div[data-testid="stAppViewContainer"]::before{
   content:""; display:block; height:6px; width:100%;
@@ -120,6 +124,27 @@ div[data-testid="stAppViewContainer"]::before{
   background: #fef2f2;
   border-color: #fecaca;
   color: #b91c1c;
+}
+.oj-nav-wrap {
+  padding: 0.2rem 0 0.35rem 0;
+}
+.oj-sample-box {
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 0.75rem 0.9rem;
+  background: #fafafa;
+  margin-bottom: 0.75rem;
+}
+.oj-sample-title {
+  font-size: 0.82rem;
+  color: #6b7280;
+  margin-bottom: 0.3rem;
+}
+.oj-sample-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.95rem;
+  color: #111827;
 }
 </style>
 """
@@ -235,6 +260,9 @@ def login_dialog():
     with st.form('login_register_form'):
         username = st.text_input('用户名')
         password = st.text_input('密码', type='password')
+        confirm_password = ''
+        if mode == '注册':
+            confirm_password = st.text_input('确认密码', type='password')
         submitted = st.form_submit_button('提交', type='primary', use_container_width=True)
     if not submitted:
         return
@@ -242,6 +270,9 @@ def login_dialog():
         st.warning('用户名和密码不能为空')
         return
     if mode == '注册':
+        if password != confirm_password:
+            st.warning('两次输入的密码不一致')
+            return
         code, data, err = api('POST', '/api/users/', {'username': username.strip(), 'password': password})
         if code != 200:
             st.error(f'注册失败：{data.get("msg") if data else err}')
@@ -281,25 +312,50 @@ def render_topbar(page_tag=''):
 def render_subheader(breadcrumb_parts, active_route='home'):
     label_map = ROUTE_LABELS if is_admin() else ROUTE_LABELS_USER
     with st.container():
-        left, right = st.columns([3, 5])
-        with left:
-            crumbs = []
-            for index, (text, _) in enumerate(breadcrumb_parts or []):
-                crumbs.append(f'**{text}**' if index == len(breadcrumb_parts) - 1 else f':gray[{text}]')
+        st.markdown('<div class="oj-nav-wrap">', unsafe_allow_html=True)
+        route_keys = [key for key in ROUTE_ORDER if key in label_map]
+        nav_cols = st.columns(len(route_keys))
+        for index, route_key in enumerate(route_keys):
+            slug = ROUTE_TO_SLUG.get(route_key, '')
+            target = '/' if not slug else f'/{url_quote(slug)}'
+            with nav_cols[index]:
+                st.link_button(
+                    label_map[route_key],
+                    target,
+                    use_container_width=True,
+                    type='primary' if route_key == active_route else 'secondary',
+                )
+        crumbs = []
+        for index, (text, _) in enumerate(breadcrumb_parts or []):
+            crumbs.append(f'**{text}**' if index == len(breadcrumb_parts) - 1 else f':gray[{text}]')
+        if crumbs:
             st.caption('  ›  '.join(crumbs))
-        with right:
-            route_keys = [key for key in ROUTE_ORDER if key in label_map]
-            columns = st.columns(len(route_keys))
-            for index, route_key in enumerate(route_keys):
-                slug = ROUTE_TO_SLUG.get(route_key, '')
-                target = '/' if not slug else f'/{url_quote(slug)}'
-                with columns[index]:
-                    st.link_button(
-                        label_map[route_key],
-                        target,
-                        use_container_width=True,
-                        type='primary' if route_key == active_route else 'secondary',
-                    )
+        st.markdown('</div>', unsafe_allow_html=True)
+
+
+def render_home_button(label='返回首页'):
+    st.link_button(label, page_url('home'), use_container_width=True)
+
+
+def render_sample_cases(samples, heading='公开样例'):
+    st.markdown(f'#### {heading}')
+    if not samples:
+        st.info('暂无样例数据。')
+        return
+    for index, sample in enumerate(samples, start=1):
+        st.markdown(f'**样例 {index}**')
+        col_in, col_out = st.columns(2, gap='small')
+        sample_input = '' if sample is None else html.escape(str(sample.get('input', '') or ''))
+        sample_output = '' if sample is None else html.escape(str(sample.get('output', '') or sample.get('expected', '') or ''))
+        with col_in:
+            st.markdown('<div class="oj-sample-title">输入样例</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="oj-sample-box"><div class="oj-sample-text">{sample_input or "（空）"}</div></div>', unsafe_allow_html=True)
+        with col_out:
+            st.markdown('<div class="oj-sample-title">输出样例</div>', unsafe_allow_html=True)
+            st.markdown(f'<div class="oj-sample-box"><div class="oj-sample-text">{sample_output or "（空）"}</div></div>', unsafe_allow_html=True)
+        explanation = '' if sample is None else str(sample.get('explanation', '') or '')
+        if explanation:
+            st.caption(f'样例说明：{explanation}')
 
 
 def load_all_problems(force=False):

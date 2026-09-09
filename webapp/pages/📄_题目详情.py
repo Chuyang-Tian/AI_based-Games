@@ -16,6 +16,8 @@ from common import (
     ensure_init,
     is_admin,
     page_url,
+    render_home_button,
+    render_sample_cases,
     render_subheader,
     render_topbar,
     require_login_error,
@@ -38,7 +40,7 @@ pid = str(raw_pid[0] if isinstance(raw_pid, list) else raw_pid)
 if not pid:
     render_subheader([('🏠 判题首页', 'home'), ('📄 题目详情', None)], 'problems')
     st.warning('缺少题目 ID。')
-    st.link_button('返回题库', page_url('problems'), use_container_width=True)
+    render_home_button()
     st.stop()
 
 code, data, err = api('GET', f'/api/problems/{pid}')
@@ -50,7 +52,7 @@ render_subheader(crumbs, 'problems')
 
 if not problem:
     st.error(f'题目加载失败：{data.get("msg") if isinstance(data, dict) else err}')
-    st.link_button('返回题库', page_url('problems'), use_container_width=True)
+    render_home_button()
 else:
     with st.container(border=True):
         top_left, top_mid, top_right = st.columns([6, 2, 2])
@@ -60,7 +62,7 @@ else:
                 f"难度: {problem.get('difficulty') or '-'}  |  作者: {problem.get('author') or '-'}  |  来源: {problem.get('source') or '-'}"
             )
         with top_mid:
-            st.link_button('返回题库', page_url('problems'), use_container_width=True)
+            render_home_button()
         with top_right:
             st.link_button('进入判题页', page_url('judge', id=problem.get('id')), type='primary', use_container_width=True)
 
@@ -84,10 +86,10 @@ else:
             st.caption('标签：' + ', '.join(problem.get('tags') or []))
 
     with tabs[1]:
-        st.markdown('#### 公开样例')
-        st.code(json.dumps(problem.get('samples') or [], ensure_ascii=False, indent=2), language='json')
-        st.markdown('#### 测试点')
-        st.code(json.dumps(problem.get('testcases') or [], ensure_ascii=False, indent=2), language='json')
+        render_sample_cases(problem.get('samples') or [], '公开样例')
+        if is_admin():
+            st.markdown('#### 测试点数据')
+            st.code(json.dumps(problem.get('testcases') or [], ensure_ascii=False, indent=2), language='json')
 
 if is_admin() and problem:
     with tabs[2]:
@@ -162,6 +164,6 @@ if is_admin() and problem:
             if delete_code == 200:
                 clear_problem_cache()
                 toast_safe('题目已删除', 'ok')
-                st.link_button('返回题库', page_url('problems'), use_container_width=True)
+                render_home_button()
                 st.stop()
             st.error(f'删除失败：{delete_data.get("msg") if delete_data else delete_err}')

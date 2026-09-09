@@ -90,11 +90,16 @@ with hero_right:
             st.caption('暂无标签数据')
 
     with st.container(border=True):
-        st.subheader('刷新数据', divider=False)
-        if st.button('刷新题库缓存', use_container_width=True):
-            load_all_problems(force=True)
-            toast_safe('题库缓存已刷新', 'ok')
-            st.rerun()
+        mini_left, mini_right = st.columns([3, 2])
+        with mini_left:
+            st.markdown('**刷新数据**')
+            st.caption('仅在怀疑缓存未更新时使用。')
+        with mini_right:
+            st.caption('')
+            if st.button('刷新题库', use_container_width=True):
+                load_all_problems(force=True)
+                toast_safe('题库缓存已刷新', 'ok')
+                st.rerun()
 
 with st.container(border=True):
     st.subheader('最近题目', divider=False)

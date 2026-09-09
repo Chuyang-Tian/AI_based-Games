@@ -12,7 +12,7 @@ st.set_page_config(page_title='判题器 · OJ', page_icon='⚖️', layout='wid
 from common import (
     ensure_init, render_topbar, render_subheader,
     current_user, require_login_error, is_admin,
-    load_all_problems, load_languages, api, page_url, toast_safe,
+    load_all_problems, load_languages, api, page_url, render_home_button, render_sample_cases, toast_safe,
 )
 
 LANG_DEFAULT_CODE = {
@@ -33,7 +33,7 @@ else:
     pid = str(raw_pid)
 if not pid:
     st.info('⚠️ 没有指定题目 ID（URL 需包含 ?id=xxx）。')
-    st.link_button('← 返回首页', page_url('home'), type='primary', use_container_width=True)
+    render_home_button('← 返回首页')
     st.stop()
 
 problems = load_all_problems()
@@ -57,7 +57,7 @@ if not user:
 
 if not problem:
     st.error(f'❌ 题目 `{pid}` 不存在。')
-    st.link_button('← 返回首页', page_url('home'), type='primary', use_container_width=True)
+    render_home_button('← 返回首页')
     st.stop()
 problem = problem or {}
 
@@ -120,7 +120,7 @@ with header_card:
     with t2:
         st.caption('')
         st.caption('')
-        st.link_button('← 返回题目页', page_url('problem_detail', id=p_id), use_container_width=True)
+        render_home_button('← 返回首页')
 
     m1, m2, m3 = st.columns(3)
     m1.metric('⏱ 时间限制', f'{p_tl} s')
@@ -213,18 +213,7 @@ with col_right:
             if not samples:
                 st.caption('（该题目暂未设置公开样例）')
             elif use_s:
-                for i, s in enumerate(samples):
-                    with st.expander(f'📑 公开样例 #{i+1}', expanded=(i == 0)):
-                        c_in, c_out = st.columns(2)
-                        with c_in:
-                            st.caption('输入 Input')
-                            st.code(s.get('input', '') or '', language=None)
-                        with c_out:
-                            st.caption('期望输出 Expected')
-                            st.code(s.get('output', '') or '', language=None)
-                        if s.get('explanation'):
-                            st.caption(f'📝 样例解释')
-                            st.info(s['explanation'])
+                render_sample_cases(samples, '公开样例')
 
         with t2:
             c_check1, c_check2, c_btn = st.columns([3, 4, 2])
