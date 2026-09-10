@@ -1,4 +1,21 @@
-"""提交详情页。"""
+"""
+提交详情页——Step5 评测日志（5分）的核心展示页。
+= URL 参数 =
+  ?id=xxx        submission_id，必需；或从 st.session_state['last_submission_id'] 兜底（刚提交完不用改 URL 也能看）。
+= 主要数据来源 =
+  1. GET /api/submissions/{sid}          → 总体信息（用户/题目/语言/代码/状态/pass:total/time/memory/提交时间）
+  2. GET /api/submissions/{sid}/log      → 测试点明细（每个 input/expected/actual/time/memory/error_message）
+                                            Step5 核心：返回字段取决于 log_visibility（hidden/after_submit/public）
+                                            以及是否是管理员；每一次调用都会写 access_logs 表，审计"谁什么时候看了哪次提交的明细"
+= UI 分块 =
+  - 顶部：submission 基本信息（状态徽标、时间、用户、题目、语言、所用资源）
+  - 代码块：st.code 展示代码，可复制
+  - 测试点表格：st.dataframe 每行一个测试点（case_id / status / time / memory），
+                每个测试点下面点击展开能看「输入 / 期望输出 / 实际输出 / 错误信息」（Step5 可见性控制）
+  - 管理员额外：🔄 重判按钮 + 返回日志列表按钮
+= Step5 对应点 =
+  测试点明细 + 可见性控制（Step5 3 种 visibility）+ access_logs 审计全部完成。
+"""
 import os
 import sys
 import pandas as pd

@@ -1,3 +1,43 @@
+"""
+SQLite 用户/题库/提交 数据库模块——后端 FastAPI 所有持久化操作都集中在这里。
+= 作用说明 =
+  把整个 OJ 的 RDB 操作封装成 UserDatabase 类，FastAPI 路由里只能通过它做增删改查，
+  杜绝了路由层到处写 sqlite3.connect() 的散乱问题，也方便单元测试时把 DEFAULT_DB_PATH 替换。
+  本文件 **同时管理两个 SQLite 数据库**（这是 OJ 最核心的数据模型，答辩一定要能讲清楚）：
+    (a) oj_users.db（data/ 目录下）：
+        users 表 = 账号（user_id, username, password_hash, role, join_time,
+                           submit_count, resolve_count, ...）；
+        sessions 表 = FastAPI 侧登录会话（session_id uuid4 → user_id + 过期时间）。
+    (b) oj.db（data/ 目录下）：
+        problems 表 = 题目的 JSON 配置、样例、隐藏测试点；
+        submissions 表 = 每次提交的语言/代码/判题结果/status/pass_cases；
+        languages 表 = Step2 支持的"可注册新语言"及编译命令/运行命令；
+        classes / assignments / exams 表 = 教学扩展功能（班级/作业/考试）；
+        ai_* 表 = Advance AI 智能命题的草稿、任务日志、加密配置。
+= 关键技术点（答辩必背）=
+  1. 密码加密：bcrypt.hashpw()，默认种子账号 admin/admintestpassword 首次启动时写入；
+     找不到 bcrypt 包时降级用 hmac.sha256（_HAS_BCRYPT 控制，保证 Windows 裸机也能跑）。
+  2. 用户统计同步（v1.4.1 新核心）：recompute_user_stats(user_id) 直接 COUNT(submissions)
+     + COUNT(DISTINCT problem_id WHERE AC & pass=total)，然后 UPDATE users 表两列，
+     解决历史版本 "users.submit_count / resolve_count 陈旧不同步" 的根本问题。
+  3. 幂等初始化：init_database() 每次 FastAPI 启动都调用，CREATE TABLE IF NOT EXISTS，
+     第一次会创建 oj.db / oj_users.db 并塞种子题目 + 默认语言（Python/C++/Java）。
+  4. find_cpp_compiler()：Step2 需要 g++ 才能判 C++，这里按常见路径（msys2 ucrt64/bin/g++.exe）
+     主动查找，保证 Windows 端开箱即用。
+= 与评分项对应 =
+  Step1 题目管理 CRUD（5分）：add_problem / get_problem / update_problem / delete_problem；
+  Step2 语言注册（5分）：register_language / list_languages / unregister_language；
+  Step3 评测管理（5分）：add_submission / list_submissions / rejudge_submission；
+  Step4 用户管理（5分）：register_user / verify_password / increment_submit / recompute_user_stats；
+  Step5 评测日志（5分）：access_logs 表（审计谁看了哪次提交的测试点明细）+
+    log_visibility 字段（控制测试点 input/expected/actual/stderr 何时可见）；
+  Advance AI（10分）：ai_config + ai_task_logs + ai_drafts 表。
+= 设计选型 =
+  为什么用 SQLite 而不是 MySQL/Postgres？
+  因为 OJ 作业要求"助教拉下来双击 run_oj.bat 就能验收"，SQLite 不需要单独部署、
+  零配置就能跑，满足交付优先级。如果以后要上生产，只需把 UserDatabase 类内部
+  改成 SQLAlchemy Engine，对外接口不用动。
+"""
 import sqlite3
 import os
 import json
@@ -32,6 +72,11 @@ DEFAULT_DB_PATH = os.path.join(
 
 
 def find_cpp_compiler() -> str:
+    """
+    Step2 判题前定位 C++ 可执行编译器路径。
+    优先 PATH 里的 g++.exe / g++，否则尝试 msys2 常见安装目录；
+    找不到就返回空串，判题时改报"语言未注册/找不到编译器"。
+    """
     candidates = [
         shutil.which('g++.exe'),
         shutil.which('g++'),

@@ -1,4 +1,18 @@
-"""题目详情页。"""
+"""
+题目详情页——Step1 题目的"只读详情"视图 + 管理员编辑入口。
+= URL 参数 =
+  ?id=xxx           problem_id，必需。
+= 功能 =
+  - 未登录用户也能看题面/样例，点击"开始做题"会引导登录再跳判题；
+  - 已登录用户：显示"我的最近提交"列表（当前 problem 的 submissions，按时间倒序），
+                一键跳提交详情；
+  - 管理员：额外显示"编辑题目 JSON 配置"表单 + "删除题目（二次确认）"按钮，
+            修改后 PUT /api/problems/{pid}，并清掉 common 侧的 problem 列表缓存。
+= Step1 对应点 =
+  与 🗂题目管理 配合：增删改查的 "查（详情）/改/删" 都在这里完成。
+  "加载" = GET /api/problems/{pid}，"校验" 由 app_fastapi PUT 路由里对 time_limit/memory_limit
+  的数值合法校验完成。
+"""
 import json
 import os
 import sys
@@ -44,7 +58,7 @@ else:
         m1.metric(t('时间限制', 'Time Limit'), f"{problem.get('time_limit') or '-'} s")
         m2.metric(t('内存限制', 'Memory Limit'), f"{problem.get('memory_limit') or '-'} MB")
         m3.metric(t('公开测试点', 'Public Details'), t('开启', 'On') if problem.get('public_cases') else t('关闭', 'Off'))
-    tabs = st.tabs([t('题面详情', 'Statement'), t('样例与测试点', 'Samples & Cases')] + ([t('管理配置', 'Settings')] if is_admin() else []))
+    tabs = st.tabs([t('题面详情', 'Statement'), t('题面样例', 'Statement Samples')] + ([t('管理配置', 'Settings')] if is_admin() else []))
     with tabs[0]:
         st.markdown(f"#### {t('题目描述', 'Description')}")
         render_rich_text(problem.get('description'), t('暂无描述', 'No description yet'))
@@ -57,9 +71,12 @@ else:
         if problem.get('tags'):
             st.caption(t('标签', 'Tags') + '：' + ', '.join(problem.get('tags') or []))
     with tabs[1]:
-        render_sample_cases(problem.get('samples') or [], t('公开样例', 'Public Samples'))
+        render_sample_cases(problem.get('samples') or [], t('题面样例', 'Statement Samples'))
         if is_admin():
-            st.markdown(f"#### {t('测试点数据', 'Hidden Testcases')}")
+            st.divider()
+            st.markdown(f"#### {t('（管理员）测试点数据', '(Admin Only) Testcase Payload')}")
+            st.caption(t('以下为服务端用于判题的测试点数据，仅供管理员调试，具体构成与题面公开样例无对外明示关系。',
+                         'The following payload is used by the server for judging and is admin-only. Its exact composition is not explicitly disclosed to end users.'))
             st.code(json.dumps(problem.get('testcases') or [], ensure_ascii=False, indent=2), language='json')
 if is_admin() and problem:
     with tabs[2]:

@@ -36,9 +36,45 @@ SSE_EVENTS = [
     'token', 'complete', 'cancelled', 'error',
 ]
 
+MOCK_SAMPLE_GENERATOR_SCRIPT = '''"""
+演示模式造数脚本 — 排序与去重样例生成。
+可运行： python generate_test.py   （在脚本同目录产生 case_000.in / case_001.in / ...）
+管理员可在 AI 命题页的「样例脚本」Tab 中修改 N_CASES / 参数重跑，
+生成更多样例后一键「追加至隐藏测试点」。
+"""
+import os, random
+random.seed(42)
+N_CASES = 8
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def write_case(i, n, arr):
+    in_path = os.path.join(BASE_DIR, f"case_{i:03d}.in")
+    with open(in_path, "w", encoding="utf-8") as f:
+        f.write(str(n) + "\\n")
+        f.write(" ".join(map(str, arr)) + "\\n")
+    print(f"CASE{i:03d}: N={n}, unique_guess={len(set(arr))}")
+
+for i in range(N_CASES):
+    if i == 0:
+        arr = [3, 1, 4, 1, 5]
+        write_case(i, len(arr), arr)
+    elif i == 1:
+        arr = [2] * 6
+        write_case(i, len(arr), arr)
+    elif i % 3 == 2:
+        n = 1
+        arr = [random.randint(-10**9, 10**9)]
+        write_case(i, n, arr)
+    else:
+        n = random.randint(2, 20)
+        arr = [random.randint(-1000000, 1000000) for _ in range(n)]
+        write_case(i, n, arr)
+print(f"DONE: generated {N_CASES} case_*.in files in {BASE_DIR}")
+'''
+
 MOCK_PROBLEM_JSON = {
     "problem_id_hint": "A100",
-    "title": "【AI-Mock】数组排序与去重",
+    "title": "【AI-演示】数组排序与去重（内置脚本）",
     "description": (
         "小明有一个长度为 N 的整数数组 a_1,a_2,...,a_N。请先将数组从小到大排序，"
         "再输出去重后的结果，每个元素仅保留第一次出现的位置。\n\n"
@@ -52,6 +88,25 @@ MOCK_PROBLEM_JSON = {
     "memory_limit": 128,
     "compare_mode": "exact",
     "allow_ai_hint": 0,
+    "_case_generation": {
+        "mock": True,
+        "script_source": MOCK_SAMPLE_GENERATOR_SCRIPT,
+        "script_stdout": (
+            "CASE000: N=5, unique_guess=4\n"
+            "CASE001: N=6, unique_guess=1\n"
+            "CASE002: N=1, unique_guess=1\n"
+            "CASE003: N=11, unique_guess=11\n"
+            "CASE004: N=8, unique_guess=8\n"
+            "CASE005: N=1, unique_guess=1\n"
+            "CASE006: N=15, unique_guess=15\n"
+            "CASE007: N=18, unique_guess=18\n"
+            "DONE: generated 8 case_*.in files"
+        ),
+        "script_summary": "演示模式 · 内置脚本生成 8 组.in；前 2 组题面样例，其余 6 组隐藏测试点",
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "generated_at": 0,
+    },
     "test_cases": [
         {"input": "5\n3 1 4 1 5\n", "output": "4\n1 3 4 5\n", "score": 10, "visibility": "public"},
         {"input": "6\n2 2 2 2 2 2\n", "output": "1\n2\n", "score": 10, "visibility": "public"},

@@ -1,4 +1,18 @@
-"""班级页面。"""
+"""
+班级页面——教学扩展功能（Step1~Step6 / Advance 不直接考核，但 Step6 要求页面组完整时作为加分项展示）。
+= URL 参数 =
+  ?id=xxx    班级 ID；没传 id 就展示"班级列表/我加入的班级"（学生）/ "班级列表/我创建的班级"（管理员/老师）。
+= 功能 =
+  1. 班级列表：展示所有公开班级 + 我加入的（student_roles 表）；
+  2. 单个班级详情：班级名 + 简介；4 个 metric 卡片（学生数 / 题目数 / 作业数 / 考试数）；
+     下方两个 Tab：作业列表、考试列表，点击跳 📝作业 / 📝考试。
+  3. 管理员：创建班级（POST /api/classes）、解散班级（DELETE）、编辑班级名。
+= 设计思路 =
+  班级作为 Assignment / Exam 的顶层容器，一条作业必须属于某个班级，考试也一样。
+= 注意 =
+  这部分是扩展功能，答辩时间不够可以先不演示；但代码结构要讲清楚——班级→作业/考试→题目映射，
+  数据全走 userdb + FastAPI classes/assignments/exams 路由，仍然不直连 DB。
+"""
 import os
 import sys
 import streamlit as st

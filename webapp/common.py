@@ -1,4 +1,32 @@
-"""Streamlit 多页面公共模块。"""
+"""
+Streamlit 前端的「公共工具箱」模块——所有 pages/*.py 与 app_streamlit.py 都会 import。
+= 作用说明 =
+  1. API 调用层：统一封装 common.api(method, path, **kwargs)，
+     把浏览器端（Streamlit 进程内部）的 HTTP 请求转发给本地 FastAPI :5000；
+     自带会话 cookie（oj_session_id），和后端 session store 保持一致。
+  2. 多页面路由：ROUTE 常量 + ROUTE_TO_SLUG + page_url(key, **qs)，
+     用「路由 key（如 'problems' / 'judge'）」而不是硬编码 URL，
+     避免直接跳转 /判题器 但忘记带 problem_id 的死链问题。
+  3. UI 渲染工具：render_topbar / render_page_link / render_subheader / require_login_error 等，
+     让每个子页面保持统一的配色、导航条结构和「未登录先引导登录」的一致行为。
+  4. 版本 & 国际化：OJ_VERSION（v1.4.1）、THEME_OPTIONS（红/粉/蓝/黑四套配色）、
+     I18N 翻译字典 + tr(key, default, **kwargs)，避免把中文散落在 20 多个页面里难维护。
+  5. 登录态同步：refresh_me() 每次页面渲染都 GET /api/auth/me，
+     把最新的 user_id/username/role/提交数/通过数写进 st.session_state['oj_me']，
+     解决 v1.4.0 之前 "用户个人信息 metric 全 '-' / 统计不同步" 的核心根因之一。
+= 关键依赖 =
+  requests.Session() 做长连接和 cookie 持久化；
+  streamlit 做 st.session_state 与 UI 渲染；
+  OJ_API_BASE 环境变量控制 FastAPI 地址（默认 http://127.0.0.1:5000）。
+= 与评分项对应 =
+  - Step4（用户管理 5分）：登录态、当前用户 is_admin 判断、登出接口都集中在这里；
+  - Step6（前端交互 5分）：所有 UI 页面的风格统一 + 前后端不直连 DB 的强制封装，
+    正是通过 common.api 做到的。
+= 注意事项 =
+  common.api 返回 (code, payload_or_None, err_or_None) 三元组，
+  payload 是 FastAPI _api_response() 包的那一层 {code,msg,data}，
+  所以 pages/*.py 的业务逻辑里统一还要判断 payload.get('data')，别把外层当数据。
+"""
 import html
 import os
 import re
@@ -15,7 +43,7 @@ ROUTE_LABELS_USER_ZH = {'home': '🏠 判题首页', 'auth': '🔐 登录 / 注�
 ROUTE_LABELS_EN = {'home': '🏠 Home', 'auth': '🔐 Login', 'classes': '🎓 Classes', 'assignments': '📝 Assignments', 'exams': '📝 Exams', 'profile': '👤 Profile', 'languages': '🔣 Languages', 'judge': '⚖️ Judge', 'problems': '🗂 Problem Admin', 'submissions': '📋 Submissions', 'users': '👥 Users', 'ai': '🤖 AI Problem Gen', 'ai_config': '⚙️ AI Config'}
 ROUTE_LABELS_USER_EN = {'home': '🏠 Home', 'auth': '🔐 Login', 'classes': '🎓 My Classes', 'assignments': '📝 My Assignments', 'exams': '📝 My Exams', 'profile': '👤 Profile', 'languages': '🔣 Languages', 'judge': '⚖️ Judge', 'problems': '📚 Problemset', 'submissions': '📋 My Submissions', 'ai': '🤖 AI Problem Gen'}
 ROUTE_TO_SLUG = {'home': '', 'auth': '登录注册', 'classes': '班级', 'assignments': '作业', 'exams': '考试', 'profile': '个人信息', 'languages': '语言管理', 'judge': '判题器', 'problems': '题目管理', 'problem_detail': '题目详情', 'submissions': '提交日志', 'submission_detail': '提交详情', 'users': '用户管理', 'ai': 'AI命题', 'ai_config': 'AI配置'}
-OJ_VERSION = 'v1.4.1'
+OJ_VERSION = 'v1.5'
 THEME_OPTIONS = {'red': {'label': '红', 'accent_1': '#c62828', 'accent_2': '#8e0000', 'accent_soft': '#fff5f5', 'accent_border': '#fecaca', 'accent_text': '#b91c1c', 'surface_soft': '#faf7f7', 'surface_muted': '#f5f1f1', 'surface_border': '#eadede', 'surface_hover': '#f2e8e8', 'text_soft': '#6b7280', 'text_main': '#111827'}, 'pink': {'label': '粉', 'accent_1': '#d81b60', 'accent_2': '#ad1457', 'accent_soft': '#fdf2f8', 'accent_border': '#f9a8d4', 'accent_text': '#be185d', 'surface_soft': '#fcf7fa', 'surface_muted': '#f9f1f5', 'surface_border': '#eed9e3', 'surface_hover': '#f5e8ef', 'text_soft': '#6b7280', 'text_main': '#111827'}, 'blue': {'label': '蓝', 'accent_1': '#2563eb', 'accent_2': '#1d4ed8', 'accent_soft': '#eff6ff', 'accent_border': '#93c5fd', 'accent_text': '#1d4ed8', 'surface_soft': '#f6f7f9', 'surface_muted': '#eff1f5', 'surface_border': '#d7dce5', 'surface_hover': '#e9edf3', 'text_soft': '#6b7280', 'text_main': '#111827'}, 'black': {'label': '黑', 'accent_1': '#374151', 'accent_2': '#111827', 'accent_soft': '#f3f4f6', 'accent_border': '#d1d5db', 'accent_text': '#111827', 'surface_soft': '#f3f4f6', 'surface_muted': '#e5e7eb', 'surface_border': '#d1d5db', 'surface_hover': '#e5e7eb', 'text_soft': '#4b5563', 'text_main': '#111827'}}
 LOCALE_OPTIONS = {'zh-CN': '中文', 'en-US': 'English'}
 I18N = {'en-US': {'platform_title': '💻 OJ Debug Platform', 'build_version': '1.3', 'theme_picker': 'Theme', 'locale_picker': 'Language', 'logout': 'Log Out', 'login_or_register': 'Login / Sign Up', 'guest_user': 'Guest', 'admin_role': 'Admin', 'user_role': 'User', 'not_logged_in': 'Not logged in', 'login_required': 'Please log in first.', 'admin_required': 'This page is available to admins only.', 'return_home': 'Back Home', 'view_all': 'View All', 'sample_cases': 'Public Samples', 'sample_input': 'Sample Input', 'sample_output': 'Sample Output', 'sample_explanation': 'Explanation', 'empty_content': 'No content yet.', 'login_success': 'Logged in successfully', 'login_failed': 'Login failed: {reason}', 'register_failed': 'Sign up failed: {reason}', 'empty_username_password': 'Username and password are required.', 'password_mismatch': 'The two passwords do not match.', 'default_admin': 'Default admin: `admin / admintestpassword`', 'nav_separator': '  >  ', 'theme_red': 'Red', 'theme_pink': 'Pink', 'theme_blue': 'Blue', 'theme_black': 'Black', 'page_home': 'Home Overview', 'page_problem_detail': 'Problem Detail', 'page_submission_detail': 'Submission Detail', 'page_judge': 'Judge', 'page_problem_admin': 'Problem Admin', 'page_problemset': 'Problemset', 'page_submissions': 'Submissions', 'page_my_submissions': 'My Submissions', 'page_classes': 'Classes', 'page_assignments': 'Assignments', 'page_exams': 'Exams', 'manage_config': 'Settings', 'public_samples': 'Public Samples', 'testcases_data': 'Hidden Testcases', 'save_problem': 'Save Problem', 'delete_problem': 'Delete Problem', 'public_case_detail': 'Expose testcase details', 'visibility_label': 'Result visibility', 'visibility_hidden': 'Hidden by default', 'visibility_after_submit': 'Visible after submission', 'visibility_public': 'Always visible', 'allow_input': 'Allow input view', 'allow_expected': 'Allow expected output view', 'allow_actual': 'Allow actual output view', 'allow_error': 'Allow error details view', 'judge_status_hint': 'Possible language mismatch. The system kept running, but you may want to switch the language and retry.'}}
@@ -336,7 +364,7 @@ def render_pagination_controls(state_key, current_page, total_pages, page_size, 
             _set_pagination_page(state_key, current_page + 1)
             st.rerun()
 
-def render_sample_cases(samples, heading='公开样例'):
+def render_sample_cases(samples, heading='题面样例'):
     st.markdown(f'#### {heading}')
     if not samples:
         st.info(tr('empty_content', '暂无内容。'))

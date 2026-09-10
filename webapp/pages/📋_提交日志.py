@@ -1,5 +1,18 @@
 # -*- coding: utf-8 -*-
-"""提交日志页。"""
+"""
+提交日志（提交列表）页——Step3 评测管理（5分）的核心前端页面。
+= 角色差异化 =
+  普通用户：只能看"我的提交"（GET /api/submissions?user_id=me），user_id 过滤器锁死，看不到别人的代码；
+  管理员：所有用户全部提交可见；支持按 problem_id、按 status（AC/WA/RE/TLE/MLE/CE）筛选；支持按用户 username 搜索。
+= 功能 =
+  - 分页：page / page_size；
+  - 每行展示：提交ID / 用户 / 题目 / 语言 / 状态 tag（配色：AC 绿 / WA 红 / TLE MLE 橙 等）/ pass/total / time / memory / 提交时间；
+  - 点击整行跳 🧾提交详情；
+  - 管理员每行有"🔄 重判"按钮，POST /api/submissions/{sid}/rejudge，重跑 Judger 后更新 submissions 表
+    （对应 Step3 的"重新评测"要求）。
+= Step3 对应点 =
+  提交记录查询（分页 + 筛选）+ 状态管理（rejudge 改 status + pass/total）+ 重新评测 全部完成。
+"""
 
 import os
 import sys

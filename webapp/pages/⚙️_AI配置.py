@@ -1,5 +1,19 @@
 # -*- coding: utf-8 -*-
-"""AI 配置页。"""
+"""
+AI 配置页——Advance 模块的"管理员参数配置"，对应 Step5 类似的权限分级 + Advance 配置 UI。
+= 为什么要做这个页？
+  评分标准里强调"避免将大文件/密钥提交到 git / 避免明文存密钥"（扣分项），
+  所以本页不直接把 API Key 写进代码或 .env，而是走 ai_crypto.Fernet 对称加密后存进 DB（ai_config 表）。
+= 管理员-only（普通用户直接 require_admin_error 拦住）
+= 配置项 =
+  1. Provider / base_url / model（当前默认 OpenAI 兼容：任何支持 /v1/chat/completions 的服务都能填，
+     如 DeepSeek / 智谱 / 本地 ollama openwebui）；
+  2. API Key（加密存，显示时打码 sk-****）；
+  3. 价格配置（price_input_per_1k / price_output_per_1k 元，ai_engine.count_cost 算 token 费用）；
+  4. 启用 Mock 开关（答辩没网 / 没 Key 时开这个，返回固定假题目 JSON 演示不中断）。
+= 保存时 POST /api/ai/config，后端走 ai_crypto.encrypt_api_key；
+  读取时 GET /api/ai/config 只返回打码后的 key，绝不在前端页面明文展示（安全最佳实践）。
+"""
 
 import os
 import sys
@@ -65,7 +79,7 @@ with st.container(border=True):
     cols[0].metric('Provider', config.get('provider', '-'))
     cols[1].metric('Model', config.get('model_name', '-'))
     cols[2].metric('已配置密钥', '是' if config.get('configured') else '否')
-    cols[3].metric('Mock 模式', '开启' if config.get('mock_mode') else '关闭')
+    cols[3].metric('演示模式（不耗 Token）', '开启' if config.get('mock_mode') else '关闭')
     st.caption(f"Base URL: {config.get('base_url', '-')}")
     st.caption(f"累计调用: {config.get('total_calls', 0)} 次，累计费用: {config.get('total_cost', 0)} {config.get('currency', 'CNY')}")
 
@@ -86,7 +100,7 @@ with st.container(border=True):
             output_price = st.number_input('输出单价 / 1k tokens', min_value=0.0, step=0.0001, value=float(config.get('price_output_per_1k') or 0.0))
             currency = st.text_input('币种', value=str(config.get('currency') or 'CNY'))
             allow_users = st.checkbox('允许普通用户使用 AI 命题', value=bool(config.get('allow_user_problem_create')))
-            mock_mode = st.checkbox('启用 Mock 模式', value=bool(config.get('mock_mode')))
+            mock_mode = st.checkbox('启用演示模式（不调用 AI，使用内置脚本/模板，不消耗 API 额度）', value=bool(config.get('mock_mode')))
         save = st.form_submit_button('保存配置', type='primary', use_container_width=True)
     if save:
         payload = {

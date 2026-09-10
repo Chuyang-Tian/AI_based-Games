@@ -1,3 +1,17 @@
+"""
+输出比对器 OutputComparator：给定 actual/expected 两段文本，按 compare_mode 判 AC 或 WA。
+= 四种比对模式（common.Comparator 接口要求 Step3 可切换）=
+  exact    ：严格逐字符完全相等（包括换行、空格、BOM）。最苛刻，一般不用。
+  loose    ：默认 OJ 最常见模式——
+             normalize 先每行 rstip 去掉行尾空格，再把首尾空行全部 pop；
+             剩下的内容比较。解决"用户多打一个换行/每行末尾多空格"不应该 WA 的问题。
+  token    ：先 normalize → 再把每行按 whitespace 切成 tokens，行间插入换行符 \n → 按 token 列表逐个比对，
+             容忍"空格数 / 缩进不一致"但 token 顺序一致。
+  float    ：token 模式的基础上，额外把数值 token 当浮点数比较，abs 差 < float_precision（默认 1e-6）就判等。
+             适合数值计算类题目（如 sqrt/矩阵乘法）。
+= 设计意图 =
+  把比对策略单独抽成类，避免 Judger.judge() 里写一堆 if-else，新增"自定义比对（如特判器）"时只要加个 mode。
+"""
 import re
 from typing import Tuple
 

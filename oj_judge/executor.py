@@ -1,3 +1,20 @@
+"""
+代码执行器：判题器最底层的"沙盒"层（当前基于 subprocess，安全沙盒仅教学用，生产上必须隔离）。
+= 执行流程 =
+  1. prepare_program(language, source_code) ：
+     - 在系统 tempfile.TemporaryDirectory() 里创建源代码文件（按语言取 file_ext）；
+     - 如语言带 compile_cmd（C++/Java），先 subprocess 跑编译，把 CE 的 stderr 存 ExecutionResult；
+     - 返回 PreparedProgram，包含 workdir + 最终 run_command（如 `python solution.py` / `./a.out`）。
+  2. execute(prepared, stdin_text, time_limit, memory_limit)：
+     - subprocess.Popen 拉起 run_command，stdin 喂 stdin_text，stdout/stderr 用 PIPE 收；
+     - 轮询过程中按 tasklist /FI PID 检查内存占用（Windows），超过 memory_limit 就 taskkill + MLE；
+     - 如果超过 time_limit 还没退出（subprocess.wait timeout 触发）就 terminate → TLE；
+     - 正常退出则收集 stdout/stderr/return_code/time_used/memory_used。
+= 为什么不直接用 resource.getrusage？
+  因为 OJ 必须同时支持 Windows 本地验收 + WSL/Linux，resource 模块只在 Linux 上有；
+  所以这里用跨平台的 subprocess + (Windows: tasklist, Linux: ps) 双路径，保证 run_oj.bat 和
+  setup_linux.cmd 都能拿到准确的 time/memory。
+"""
 import os
 import sys
 import subprocess

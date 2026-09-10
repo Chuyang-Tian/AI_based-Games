@@ -1,4 +1,18 @@
-"""语言管理页（Step2 任务 3/4：动态注册新语言 + 查询语言列表）。"""
+"""
+语言管理页——Step2 评测控制（5分）里"动态注册新语言 + 查询语言列表"的专用前端。
+= Step2 为什么一定要有本页？
+  Step2 要求"允许注册新语言"，不能只写死 Python/C++/Java；所以 languages 表里可以由管理员加任意
+  「语言名 + file_ext + compile_cmd + run_cmd + 默认 time_limit/memory_limit」。
+= 角色差异化 =
+  普通用户：只看"🔣 语言列表"——枚举所有 enabled 语言（显示默认资源上限、编译/运行命令样例），用来做题前知道判题机装了啥；
+  管理员：右上角"新增语言"表单 + 每行「禁用/启用 / 删除」按钮，直接改 languages 表（POST /api/languages / DELETE /api/languages/{name}）。
+= 与判题器的协作 =
+  用户在 ⚖️判题器 选语言时，语言列表来自 GET /api/languages，也就是本页管理的那张表；
+  Judger.judge() 拿到 language_config（compile_cmd / run_cmd / file_ext）直接跑编译 + 运行，
+  真正做到"注册一个新语言不用改代码"。
+= Step2 对应点 =
+  查询语言列表、注册新语言、动态编译命令下发、资源默认值 全部覆盖。
+"""
 import os
 import sys
 import pandas as pd

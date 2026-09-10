@@ -1,4 +1,25 @@
 @echo off
+REM ==============================================================================================
+REM  OJ 调试平台 Linux / WSL (Ubuntu 22.04) 一键安装 + 自检脚本（管理员模式双击运行）
+REM  -----------------------------------------------------------------------------------------------
+REM  为什么要写这个脚本？
+REM    - 评分标准要求"在助教机器上拉下来就能运行"，但助教可能是 Ubuntu 服务器 / 或本地 WSL；
+REM    - 也可以在本地 WSL 里跑一遍冒烟测试，提前发现 Windows-only 的坑（比如路径用反斜杠、
+REM      tasklist 内存监控在 Linux 没有对应等）。
+REM
+REM  流程（共 6 大步，每步失败会 exit /b N 并提示你手动调）：
+REM    步骤 0    检查 wsl.exe 是否可用；否则提示先 wsl --install -d Ubuntu-22.04
+REM    步骤 1    rsync 把当前 Windows 项目目录同步到 WSL 的 /root/oj_debug_platform/
+REM               .venv / __pycache__ / *.db / .git 都 exclude，不覆盖 DB、不把 .git 大文件传进去
+REM    步骤 2    apt-get 装系统依赖：build-essential (g++)、python3-venv、python3-pip、libssl-dev
+REM    步骤 3    建 .venv 虚拟环境 + pip install fastapi/uvicorn/streamlit/psutil/bcrypt/...
+REM    步骤 4    python -m compileall -q webapp oj_judge 语法检查，提前挡掉 syntax error
+REM    步骤 5    生成 run_oj_linux.sh（一键在 WSL 起 FastAPI :5000 + Streamlit :8501，host 0.0.0.0 便于 Windows 浏览器直接访问）
+REM    步骤 6    冒烟测试：清空 DB → 启动 uvicorn 30s → curl POST auth/login + GET problems/languages/access_logs 4 个核心接口 → kill
+REM               全部通过打印 LINUX_SMOKE_OK，说明在 Linux 端也 OK。
+REM  产物：
+REM    /root/oj_debug_platform/run_oj_linux.sh  —— 下次想在 WSL 里直接启动就跑它。
+REM ==============================================================================================
 chcp 65001 >nul
 setlocal enabledelayedexpansion
 echo ============================================================
@@ -15,7 +36,7 @@ if errorlevel 1 (
     exit /b 1
 )
 
-REM 让 WSL 默认 2；确保 Ubuntu-22.04 安装（若未装则尝试装）
+REM 步骤 0-2：让 WSL 默认 2；确保 Ubuntu-22.04 注册好（首次安装需要用户在 WSL 里设用户名密码，这里会友好提示重启脚本）
 wsl --set-default-version 2 >nul
 wsl -d Ubuntu-22.04 -- echo "WSL Ubuntu OK" >nul 2>nul
 if errorlevel 1 (

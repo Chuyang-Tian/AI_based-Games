@@ -1,3 +1,27 @@
+"""
+判题器总控类 Judger：把 test_cases → 逐个测试点编译运行比对 → 输出聚合 JudgeResult。
+= 调用入口 =
+  Judger(...).judge(
+      test_cases: List[TestCase],
+      language: str,
+      source_code: str,
+      language_config: Optional[dict]=None  # 来自 languages 表的动态配置（Step2 允许注册新语言）
+  ) -> JudgeResult
+= 核心流程（答辩可以画流程图）=
+  1. prepare_program：编译阶段（如果语言带 compile_cmd），失败 → 总状态直接 CE，直接返回；
+  2. 对 test_cases 顺序（或并行，当前是同步顺序便于本地调试）执行：
+       - executor.execute(prepared, stdin=case.input_data) → ExecutionResult
+       - if timed_out → SingleCaseResult(TLE)
+       - elif memory_exceeded → MLE
+       - elif return_code != 0 → RE
+       - 否则 comparator.compare(actual, expected) 判 AC/WA
+       - 结果塞 case_results 列表
+  3. 聚合：
+       passed_cases = sum(1 for r in case_results if r.status==AC)
+       全局 status：所有 case 都是 AC 才 AC，否则按 CE > MLE > TLE > RE > WA > SE 的严重度取最高。
+= 回调钩子 =
+  on_case_start / on_case_end：给 Step6 的前端 UI 做"实时判题进度条"（当前 v1.4.1 还没做 UI 动画，但接口已经预留）。
+"""
 from typing import List, Optional, Callable, Any
 from .constants import (
     JudgeStatus,

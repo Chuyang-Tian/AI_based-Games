@@ -1,4 +1,20 @@
-"""考试页面。"""
+"""
+考试页面——教学扩展功能（比作业多了"考试窗口"与"防作弊/时间锁"逻辑）。
+= URL 参数 =
+  ?id=xxx        exam_id，可选。
+= 和作业的不同点（答辩时提一下）=
+  1. 有明确的「考试起止时间」exam_window（start_time / end_time），不在窗口内不能「开始考试」；
+  2. 学生点击「开始考试」POST /api/exams/{id}/start → 后端记录 exam_window_started_at，
+     超时未交或过 end_time 自动交卷；
+  3. 防舞弊：考试进行中 禁止查看历史提交（除自己的）+ 日志明细默认 hidden，仅管理员考完后可查；
+  4. 题目列表每题限时单独做，或整体限时按个人配置。
+= 功能 =
+  - 管理员：创建考试、绑定班级、配置题目顺序、开/关考试窗口；
+  - 学生：在考试窗口内「开始考试 → 按顺序做题 → 交卷 → 查看得分统计」。
+= 设计思路 =
+  与 Assignment 架构类似，只是多了 exam_window / exam_start / exam_end 三张辅助表记录状态，
+  复用 Step3 submissions 表，只是多填 exam_id 字段。
+"""
 import os
 import sys
 import streamlit as st

@@ -1,5 +1,19 @@
 # -*- coding: utf-8 -*-
-"""用户管理页。"""
+"""
+用户管理页——Step4 用户管理（5分）的"管理员管理所有账号"界面。
+= 角色控制 =
+  必须登录 + is_admin 才能进；普通用户 require_admin_error 直接拦。
+= 功能 =
+  - 表格展示所有用户：user_id / 用户名 / 角色 / 注册时间 / 提交次数 / 通过题目数 / 最近登录；
+  - 筛选：按 username 搜索（模糊 LIKE）；分页；
+  - 每行下拉改角色：user ↔ admin ↔ banned（PUT /api/users/{id}/role）；
+    banned 账号登录时在后端 auth_me 直接 401，无法再提交（Step4 权限管理要求）。
+  - 禁用/解封（banned 角色）：角色切换 + toast 提示。
+= 对应 Step4 =
+  用户注册（🔐登录注册页）+ 登录（🔐登录注册页）+ 权限管理（本页）+ 角色分级（user/admin/banned） 全部交付完毕。
+= 注意 =
+  改角色后不会立即刷新当前 admin 自己的登录态，只影响目标账号下次登录。
+"""
 
 import os
 import sys

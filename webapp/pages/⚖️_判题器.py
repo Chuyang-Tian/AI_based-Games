@@ -1,5 +1,23 @@
 """
-判题器（纵向 OJ 布局版）
+判题器页面——Step6 "评测与提交页面" 的核心页（也是用户最常用的页）。
+= URL 参数 =
+  ?id=xxx               必需：要做哪道题的 problem_id
+  ?assignment_id=xxx    可选：该提交是在"作业"里做的
+  ?exam_id=xxx          可选：该提交是在"考试"里做的
+= 页面布局（纵向 OJ 布局）=
+  上半区：题目详情（题面 / 输入格式 / 输出格式 / 样例 / 数据范围）
+  下半区：左侧语言单选（Python / C++ / Java / 新注册语言 —— 来自 Step2 languages 表）
+          右侧代码编辑器 st.text_area（高度可调）
+          底部两个按钮：
+            🔬 自定义测试（不传 problem_id，只在前端跑用户给的 sample input，看 stdout，不入库）
+            🚀 提交判题（POST /api/submissions，后端 Judger 判完写 submissions 表，跳 🧾提交详情）
+= 关键技术点 =
+  1. st.query_params.get('id') 拿到 problem_id，没有就显示返回首页 + 错误提示（v1.4.1 之前 common.page_url('judge')
+     不带 id，是个死链，这也是 v1.4.1 修复「开始做题改成 page_url('problems')」的根因）。
+  2. 语言列表 GET /api/languages，包含 Step2 管理员动态注册的新语言，不是硬编码。
+  3. 提交成功后 st.session_state['last_submission_id'] = sid，然后 navigate 到提交详情页展示。
+= Step 对应 =
+  Step2 评测控制（5分）、Step3 提交入库、Step6 前端评测提交页面。
 """
 import json
 import os
@@ -132,8 +150,8 @@ with st.container(border=True):
         st.markdown(f"#### {t('⚙️ 数据范围与提示', '⚙️ Constraints & Notes')}")
         render_rich_text(extra)
 with st.container(border=True):
-    st.subheader(t('📋 公开样例', '📋 Public Samples'))
-    render_sample_cases(samples, t('公开样例', 'Public Samples'))
+    st.subheader(t('📋 题面样例', '📋 Statement Samples'))
+    render_sample_cases(samples, t('题面样例', 'Statement Samples'))
 with st.container(border=True):
     st.subheader(t('💻 判题工作区', '💻 Judge Workspace'))
     st.caption(t('这里不再自动注入任何模板代码。Python 可以直接使用 `input()`，C++ 可以直接使用 `cin`，Java 可以直接使用 `Scanner`。', 'No starter template is injected here. Python can use `input()`, C++ can use `cin`, and Java can use `Scanner` directly.'))
@@ -166,12 +184,12 @@ with st.container(border=True):
         default_modes.append(judge_mode_label)
     if gs('custom', False):
         default_modes.append(custom_mode_label)
-    selected_modes = st.multiselect(t('本次运行方式', 'Run Mode'), [judge_mode_label, custom_mode_label], default=default_modes or [judge_mode_label], key=pk + 'run_modes_widget', help=t('评测：运行题目公开样例。自定义调试：运行你手动填写的样例。', 'Judge: run official public samples. Custom Debug: run your own cases.'))
+    selected_modes = st.multiselect(t('本次运行方式', 'Run Mode'), [judge_mode_label, custom_mode_label], default=default_modes or [judge_mode_label], key=pk + 'run_modes_widget', help=t('评测：按正式提交流程运行（具体运行集合由服务端判定）。自定义调试：运行你手动填写的样例，不写入提交日志。', 'Judge: run through the official submission flow (the exact case set is server-side). Custom Debug: run your own cases without creating a submission record.'))
     use_samples = judge_mode_label in selected_modes
     use_custom = custom_mode_label in selected_modes
     ss_set('samples', use_samples)
     ss_set('custom', use_custom)
-    st.caption(t(f"本次将运行 {(len(samples) if use_samples else 0)} 个公开样例 + {(len(gs('custom_list') or []) if use_custom else 0)} 个自定义样例。", f"This run will use {(len(samples) if use_samples else 0)} public cases + {(len(gs('custom_list') or []) if use_custom else 0)} custom cases."))
+    st.caption(t(f"本次将按评测模式运行 {('若干组正式样例' if use_samples else '0 组正式样例')} + {(len(gs('custom_list') or []) if use_custom else 0)} 组自定义调试样例。", f"This run will use {('several official cases' if use_samples else '0 official cases')} + {(len(gs('custom_list') or []) if use_custom else 0)} custom debug cases."))
     st.markdown(f"#### {t('🔥 自定义调试样例', '🔥 Custom Debug Cases')}")
     add_left, add_right = st.columns([7, 2])
     with add_left:

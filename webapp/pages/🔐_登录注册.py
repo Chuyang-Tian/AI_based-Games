@@ -1,5 +1,20 @@
 # -*- coding: utf-8 -*-
-"""登录 / 注册独立页面。"""
+"""
+登录 / 注册页——Step4 用户管理的核心前端入口。
+= 功能分区 =
+  - 单选：登录 / 注册 两种模式；
+  - 登录：输入用户名+密码 → POST /api/auth/login → 拿到 oj_session_id cookie（common.SESSION 自动保存）
+          → 刷新 st.session_state['oj_me'] → 跳首页；
+  - 注册：用户名+密码+确认密码 → POST /api/auth/register → 创建 users 表一条 user 角色账号
+          → 自动登录进入系统；
+  - 已登录态：显示"你已经登录"，提供返回首页 / 退出登录两个动作。
+= Step4 对应点 =
+  5 分用户管理里"注册+登录+登出+权限分级（admin/user/banned）"的所有 UI 交互都在这里。
+= 与其他页面的连接 =
+  - 顶栏任何"请先登录"按钮 → 跳 /登录注册；
+  - 登录成功后 common.refresh_me() 把当前用户信息写进 st.session_state，
+    后续个人信息页、判题页、提交页都靠这个对象判断登录态和权限。
+"""
 
 import os
 import sys

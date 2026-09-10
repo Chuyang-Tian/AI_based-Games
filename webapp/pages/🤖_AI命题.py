@@ -1,4 +1,21 @@
-"""AI 智能命题页。"""
+"""
+AI 智能命题页——Advance 进阶 10 分（AI 智能命题 R1~R4）的核心 UI。
+= R1~R4 对应什么？
+  R1 题目可读性    ：生成的题面是中文/英文自然语言，有背景、输入输出说明、数据范围；
+  R2 样例正确性    ：至少给 2 组公开样例（input/output），在前端 normalize_problem_payload 里会自动挑出 public 样例；
+  R3 隐藏测试点充分：生成若干隐藏测试点（基础/边界/卡常/极限各覆盖一些，STYLE_OPTIONS 可以选分布策略）；
+  R4 功能易用性    ：用户可选"题目风格 / 难度 / 标签 / 测试点数量 / 模型 / 温度"，跑完可以直接"一键加入正式题库"。
+= 数据流（答辩能画出来）=
+  1. 用户填表 → 前端组织 prompt → POST /api/ai/generate（SSE 流式输出）；
+  2. 后端 ai_engine.py：AIEngine 调 LLM /chat/completions 或走 Mock → 输出 SSE 事件
+     start / step / draft / cases / token / complete → 前端逐行接收，显示"当前进度：正在生成题面/正在生成测试点..."；
+  3. 完成后写 ai_drafts 表（草稿），前端展示 JSON 原始结果 + 渲染成题目卡 + 可编辑；
+  4. 用户点"✅ 加入题库" → POST /api/ai/drafts/{id}/commit → 把草稿转成正式 problem 记录，
+     之后 🗂题目管理 就能看到并让用户去做题。
+= 容错 =
+  - 没配置 API Key 也能跑：自动进入演示模式（不调用 AI，使用内置脚本/模板），返回固定 demo 题目 JSON，保证演示不卡；
+  - LLM 返回格式不对（少了 description / test_cases 字段），后端 normalize_problem_payload 补默认值，不会炸 500。
+"""
 import os
 import sys
 import time
@@ -60,7 +77,7 @@ elif not is_admin() and (not allow_user_ai):
     st.info('当前管理员尚未开放普通用户使用 AI 命题功能。你可以先浏览其它页面，或联系管理员开启。')
     st.stop()
 elif not ai_configured and (not ai_mock_mode):
-    st.warning('当前尚未配置 AI 密钥。请联系管理员在“AI 配置”页面填写 DeepSeek 参数与密钥，或先启用 Mock 模式。')
+    st.warning('当前尚未配置 AI 密钥。请联系管理员在“AI 配置”页面填写 DeepSeek 参数与密钥，或先让管理员启用「演示模式（不耗 Token）」。')
 with st.container(border=True):
     st.subheader('创建命题任务')
     st.caption('题面风格已改为中文说明；括号里是简短解释，方便快速理解效果。')
@@ -177,11 +194,135 @@ with st.container(border=True):
         render_problem_preview(result)
         st.json(result, expanded=False)
         save_payload = normalize_problem_payload(result)
-        solution_tabs = st.tabs(['Python 标程', 'C++ 标程'])
+        case_gen_meta = result.get('_case_generation') or {}
+        is_admin_view = bool(is_admin())
+        tab_labels = ['Python 标程', 'C++ 标程', '测试点明细']
+        if is_admin_view:
+            tab_labels.append('样例脚本（管理员）')
+        solution_tabs = st.tabs(tab_labels)
         with solution_tabs[0]:
             st.code(result.get('solution_python') or '# 暂无 Python 标程', language='python')
         with solution_tabs[1]:
             st.code(result.get('solution_cpp') or '// 暂无 C++ 标程', language='cpp')
+        with solution_tabs[2]:
+            all_cases = result.get('test_cases') or []
+            st.caption(f'共 {len(all_cases)} 组测试点')
+            for idx, case in enumerate(all_cases):
+                vis = case.get('visibility') or 'hidden'
+                with st.expander(f'Case #{idx} — {vis.upper()} · score={case.get("score",10)}', expanded=(idx < 2)):
+                    c_in, c_out = st.columns(2)
+                    c_in.text_area('Input', value=str(case.get('input') or ''), height=180, key=f'case_in_{idx}')
+                    c_out.text_area('Output', value=str(case.get('output') or ''), height=180, key=f'case_out_{idx}')
+        if is_admin_view and len(solution_tabs) >= 4:
+            with solution_tabs[3]:
+                st.info(
+                    '「样例脚本」是本次 AI 生成测试用例时用到的原始造数程序（generate_test.py）。'
+                    ' 管理员可以：① 修改后保存回草稿；② 调整额外用例数 + 种子；③ 运行脚本追加/替换隐藏用例。'
+                )
+                default_script = str(case_gen_meta.get('script_source') or '')
+                if not default_script.strip():
+                    default_script = '"""\n未提供原始脚本。你可以在这里按约定编写 generate_test.py：\n' \
+                                     '运行后同目录应产生 case_000.in, case_001.in, ...\n' \
+                                     '脚本顶部可声明：N_CASES = 8； random.seed(...) 便于复现。\n"""\nimport os, random\nrandom.seed(42)\nN_CASES = 8\nBASE_DIR = os.path.dirname(os.path.abspath(__file__))\n\nfor i in range(N_CASES):\n    n = random.randint(1, 20)\n    arr = [random.randint(-10**6, 10**6) for _ in range(n)]\n    with open(os.path.join(BASE_DIR, f"case_{i:03d}.in"), "w", encoding="utf-8") as f:\n        f.write(str(n) + "\\n")\n        f.write(" ".join(map(str, arr)) + "\\n")\n    print(f"CASE{i}: N={n}")\nprint("OK")\n'
+                edited_script = st.text_area(
+                    'generate_test.py（样例脚本原始代码）',
+                    value=default_script,
+                    height=340,
+                    language='python',
+                    key='ai_case_script_editor',
+                )
+                stdout_prev = str(case_gen_meta.get('script_stdout') or '')
+                st.text_area('上次运行 stdout / stderr 日志', value=stdout_prev or '（暂无日志）',
+                             height=140, key='ai_case_script_stdout_prev')
+                run_c1, run_c2, run_c3, run_c4 = st.columns([1, 1, 1.5, 1.5])
+                extra_n = run_c1.number_input('额外新增组数', min_value=0, max_value=80, value=0,
+                                              help='修改脚本中 N_CASES = 原值 + 额外新增，再运行')
+                seed_delta = run_c2.number_input('种子偏移', min_value=0, max_value=10000, value=0,
+                                                 help='用于在不修改源代码的前提下换一批随机数据')
+                merge_opt = run_c3.selectbox('写回策略', options=['append_hidden', 'replace_hidden', 'replace_all'],
+                                            format_func=lambda k: {
+                                                'append_hidden': '仅追加到隐藏用例（保留现有）',
+                                                'replace_hidden': '保留公开样例，替换所有隐藏',
+                                                'replace_all': '完全替换（前2个强制公开，其余隐藏）',
+                                            }.get(k, k))
+                persist_opt = run_c4.checkbox('运行后自动回写草稿', value=True)
+                btn_c1, btn_c2 = st.columns(2)
+                with btn_c1:
+                    if st.button('💾 保存脚本到草稿', use_container_width=True):
+                        merged_meta = dict(case_gen_meta)
+                        merged_meta['script_source'] = edited_script
+                        edited_result = dict(result)
+                        edited_result['_case_generation'] = merged_meta
+                        draft_id = st.session_state.get('ai_active_draft_id')
+                        if draft_id:
+                            puc, pud, pue = api('PUT', f'/api/ai/drafts/{draft_id}',
+                                               {'problem_json': edited_result}, timeout=60)
+                            if puc == 200:
+                                st.session_state['ai_latest_result'] = edited_result
+                                result = edited_result
+                                toast_safe('脚本已保存到草稿', 'ok')
+                                st.rerun()
+                            else:
+                                st.error(f"保存失败：{(pud.get('msg') if pud else pue)}")
+                        else:
+                            st.session_state['ai_latest_result'] = edited_result
+                            result = edited_result
+                            toast_safe('脚本已在本页面临时保存；记得随后“保存到题库”或先保存草稿', 'warn')
+                            st.rerun()
+                with btn_c2:
+                    if st.button('▶ 运行脚本并按策略写回', type='primary', use_container_width=True):
+                        draft_id = st.session_state.get('ai_active_draft_id')
+                        if draft_id and persist_opt:
+                            run_payload = {'extra_cases': int(extra_n), 'seed_offset': int(seed_delta),
+                                           'merge_mode': merge_opt, 'persist': True}
+                            rc, rd, re_ = api('POST', f'/api/ai/drafts/{draft_id}/run-script', run_payload, timeout=120)
+                            if rc in (200, 422):
+                                data = rd.get('data') if isinstance(rd, dict) else {}
+                                if rc == 200:
+                                    if persist_opt and data.get('persisted'):
+                                        toast_safe(data.get('summary') or '运行成功，已回写草稿', 'ok')
+                                    else:
+                                        toast_safe(data.get('summary') or '运行成功', 'ok')
+                                    gc, gd, _ = api('GET', f'/api/ai/drafts')
+                                    row = None
+                                    if gc == 200 and isinstance(gd, dict) and isinstance(gd.get('data'), dict):
+                                        for r in gd['data'].get('list') or []:
+                                            if str(r.get('id')) == str(draft_id):
+                                                row = r; break
+                                    if row:
+                                        try:
+                                            updated_json = json.loads(row['problem_json']) if isinstance(row.get('problem_json'), str) else (row.get('problem_json') or {})
+                                            st.session_state['ai_latest_result'] = updated_json
+                                            result = updated_json
+                                            st.rerun()
+                                        except Exception:
+                                            pass
+                                    st.success(data.get('summary') or '运行完成')
+                                else:
+                                    st.error(f"脚本执行失败：{rd.get('msg') if rd else re_}；详细：{data.get('script_stderr') or data.get('script_stdout') or ''}")
+                            else:
+                                st.error(f"调用失败：{rd.get('msg') if rd else re_}")
+                        else:
+                            toast_safe('当前结果尚未保存为草稿，无法在服务端运行；请先点“保存脚本到草稿”或使用保存草稿按钮。将走前端轻量校验仅更新本页 result。', 'warn')
+                            if not draft_id:
+                                sv_code, sv_data, sv_err = api('POST', '/api/ai/drafts', {'problem_json': result}, timeout=60)
+                                if sv_code == 200 and isinstance(sv_data, dict) and sv_data.get('data'):
+                                    st.session_state['ai_active_draft_id'] = sv_data['data'].get('id')
+                                    toast_safe(f"已自动创建草稿 #{sv_data['data'].get('id')}，请再次点击“运行脚本”", 'ok')
+                                    st.rerun()
+        extra_row1, extra_row2 = st.columns([2, 1])
+        with extra_row1:
+            if st.button('💾 另存到草稿箱（用于后续“运行样例脚本”）', use_container_width=True):
+                sv1, sv2, sv3 = api('POST', '/api/ai/drafts', {'problem_json': result}, timeout=60)
+                if sv1 == 200 and isinstance(sv2, dict) and sv2.get('data'):
+                    st.session_state['ai_active_draft_id'] = sv2['data'].get('id')
+                    toast_safe(f"已存草稿 #{sv2['data'].get('id')}，现在可以在样例脚本 Tab 中运行脚本生成更多用例", 'ok')
+                    st.rerun()
+                else:
+                    st.error(f"草稿保存失败：{(sv2.get('msg') if sv2 else sv3)}")
+        with extra_row2:
+            draft_id_current = st.session_state.get('ai_active_draft_id')
+            st.caption(f'关联草稿 ID：`{draft_id_current if draft_id_current else "（未关联）"}`')
         save_col, judge_col = st.columns(2)
         with save_col:
             if st.button('保存到题库', type='primary', use_container_width=True):
@@ -199,3 +340,48 @@ with st.container(border=True):
             saved_problem_id = st.session_state.get('ai_saved_problem_id') or save_payload['id']
             render_page_link('打开题目管理页', '/%E9%A2%98%E7%9B%AE%E7%AE%A1%E7%90%86')
             st.caption(f'目标题目 ID：`{saved_problem_id}`')
+
+with st.container(border=True):
+    st.subheader('草稿箱（加载已有草稿可继续运行 / 再生成样例）')
+    drafts_code, drafts_data, drafts_err = api('GET', '/api/ai/drafts')
+    if drafts_code != 200 or not isinstance(drafts_data, dict) or not isinstance(drafts_data.get('data'), dict):
+        st.warning(f'无法读取草稿列表：{(drafts_data.get("msg") if drafts_data else drafts_err)}')
+    else:
+        rows = (drafts_data['data'].get('list') or [])
+        if not rows:
+            st.info('当前暂无草稿。上面完成一次 AI 命题后，点击“另存到草稿箱”即可出现在这里。')
+        else:
+            rows_sorted = sorted(list(rows), key=lambda r: int(r.get('updated_at') or 0), reverse=True)
+            for row in rows_sorted[:20]:
+                try:
+                    json_val = row.get('problem_json')
+                    if isinstance(json_val, str):
+                        pj = json.loads(json_val)
+                    else:
+                        pj = json_val or {}
+                except Exception:
+                    pj = {}
+                title = pj.get('title') or '（无标题）'
+                tags = ' / '.join(str(x) for x in (pj.get('tags') or []))
+                case_cnt = len(pj.get('test_cases') or [])
+                cg = pj.get('_case_generation') or {}
+                has_script = '✅ 有脚本' if (cg.get('script_source') or '').strip() else '⚠️ 无脚本'
+                c1, c2, c3, c4, c5 = st.columns([3, 2, 1.2, 1.4, 1.8])
+                c1.markdown(f"**草稿 #{row.get('id')}**: {title}")
+                c2.caption(tags[:40] or '（无标签）')
+                c3.metric('用例', case_cnt)
+                c4.caption(has_script)
+                with c5:
+                    if st.button(f'加载此草稿', key=f'load_draft_{row.get("id")}', use_container_width=True):
+                        st.session_state['ai_latest_result'] = pj
+                        st.session_state['ai_active_draft_id'] = row.get('id')
+                        st.session_state.pop('ai_active_task_id', None)
+                        toast_safe(f'已加载草稿 #{row.get("id")}', 'ok')
+                        st.rerun()
+                    if is_admin() and st.button(f'删除', key=f'del_draft_{row.get("id")}', use_container_width=True):
+                        dc, dd, de = api('DELETE', f'/api/ai/drafts/{row.get("id")}')
+                        if dc == 200:
+                            toast_safe('已删除', 'warn')
+                            st.rerun()
+                        else:
+                            st.error(f"删除失败：{(dd.get('msg') if dd else de)}")
