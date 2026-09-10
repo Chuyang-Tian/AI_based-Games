@@ -18,6 +18,7 @@ AI 智能命题页——Advance 进阶 10 分（AI 智能命题 R1~R4）的核�
 """
 import os
 import sys
+import json
 import time
 import streamlit as st
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -66,6 +67,34 @@ def render_problem_preview(problem_json):
         c1.metric('公开样例', len(public_cases))
         c2.metric('隐藏样例', len(hidden_cases))
         c3.metric('总用例', len(cases))
+
+
+def build_revision_task_payload(problem_json, feedback_text):
+    difficulty_value = problem_json.get('difficulty', 5)
+    if isinstance(difficulty_value, (int, float)):
+        difficulty = int(max(1, min(10, difficulty_value)))
+    else:
+        text = str(difficulty_value or '')
+        if '简' in text:
+            difficulty = 3
+        elif '难' in text:
+            difficulty = 8
+        else:
+            difficulty = 5
+    cases = problem_json.get('test_cases') or []
+    return {
+        'topic': problem_json.get('title') or 'AI 修订题目',
+        'difficulty': difficulty,
+        'style': 'plain',
+        'sample_count': max(4, len(cases) or 4),
+        'sample_distribution': 'balanced',
+        'extra_tags': [str(tag) for tag in (problem_json.get('tags') or []) if str(tag).strip()],
+        'source': 'AI 智能命题',
+        'style_custom': '请尽量保留原题核心算法方向，仅根据修复点调整。',
+        'requirement_notes': f'本次为基于已有草稿的修订任务。用户修复点：{feedback_text}',
+        'revision_notes': feedback_text,
+        'base_problem_json': problem_json,
+    }
 status_code, status_data, status_err = api('GET', '/api/ai/status')
 ai_status = status_data.get('data') if isinstance(status_data, dict) and isinstance(status_data.get('data'), dict) else {}
 allow_user_ai = bool(ai_status.get('allow_user_problem_create'))
@@ -218,6 +247,34 @@ with st.container(border=True):
         st.info('任务完成后会在这里展示题目 JSON，并可一键写入题库。')
     else:
         render_problem_preview(result)
+        revision_info = result.get('_revision_feedback') or {}
+        if revision_info.get('notes'):
+            st.info(f"当前结果来自“按修复点再次提交”链路。最近一次修复点：{revision_info.get('notes')}")
+        with st.container(border=True):
+            st.markdown('#### 不满意当前题目？指出修复点后再次提交')
+            st.caption('这里适合填写“背景太普通、样例规模偏小、数据范围不够卡、题面不够清楚”等明确修改意见。系统会基于当前草稿再次生成。')
+            revision_feedback = st.text_area(
+                '修复点 / 修改意见',
+                value='',
+                height=90,
+                key='ai_revision_feedback',
+                placeholder='例如：保留前缀和算法，但把背景改成图书馆预约；公开样例再丰富一点；隐藏测试点规模要更大，能卡掉 O(n^2) 解法。',
+            )
+            if st.button('🛠 根据修复点再次提交 AI 命题', use_container_width=True):
+                feedback_text = revision_feedback.strip()
+                if not feedback_text:
+                    st.error('请先填写修复点，再发起再次提交。')
+                else:
+                    revision_payload = build_revision_task_payload(result, feedback_text)
+                    task_code, task_data, task_err = api('POST', '/api/ai/problem-tasks/', revision_payload, timeout=120)
+                    if task_code == 200 and isinstance(task_data, dict) and task_data.get('data'):
+                        st.session_state['ai_active_task_id'] = task_data['data'].get('task_id')
+                        st.session_state.pop('ai_latest_result', None)
+                        st.session_state.pop('ai_active_draft_id', None)
+                        toast_safe('已按修复点重新提交 AI 命题任务', 'ok')
+                        st.rerun()
+                    else:
+                        st.error(f"再次提交失败：{(task_data.get('msg') if task_data else task_err)}")
         st.json(result, expanded=False)
         save_payload = normalize_problem_payload(result)
         case_gen_meta = result.get('_case_generation') or {}

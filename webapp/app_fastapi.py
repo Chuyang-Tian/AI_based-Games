@@ -96,7 +96,7 @@ from userdb import (
     INITIAL_ADMIN_PASSWORD,
 )
 
-_OJ_VERSION = 'v1.6'
+_OJ_VERSION = 'v1.7'
 app = FastAPI(title=f'OJ Debug Platform {_OJ_VERSION}', version=_OJ_VERSION)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -2576,10 +2576,84 @@ def _build_problem_prompt(payload: dict) -> List[Dict[str,str]]:
         '',
         '现在请严格按 Schema 输出 JSON：'
     ]
+    revision_notes = str(d.get('revision_notes') or '').strip()
+    base_problem = d.get('base_problem_json') if isinstance(d.get('base_problem_json'), dict) else {}
+    if revision_notes:
+        summary_lines = []
+        if base_problem:
+            summary_lines = [
+                f'标题：{base_problem.get("title") or "（无）"}',
+                f'标签：{", ".join(base_problem.get("tags") or []) or "（无）"}',
+                f'难度：{base_problem.get("difficulty") or "（无）"}',
+                f'用例数：{len(base_problem.get("test_cases") or [])}',
+                f'题面摘要：{str(base_problem.get("description") or "").replace(chr(10), " ")[:260]}',
+            ]
+        user_lines.extend([
+            '',
+            '【修订模式】本次不是从零开始命题，而是基于已有草稿做针对性修改。',
+            f'【用户指出的修复点】：{revision_notes}',
+            '【已有草稿摘要】',
+            *(summary_lines or ['（未提供现有草稿摘要，请按主题与修复点重新组织题面）']),
+            '请优先保留原题的核心算法方向，只围绕修复点修改题面背景、数据范围、样例、测试点和标程；如果修复点要求大改，请保证 description / test_cases / solution_python 一起同步更新。',
+        ])
     return [
         {'role':'system','content':sys_msg},
         {'role':'user','content':'\n'.join(user_lines)},
     ]
+
+
+def _apply_mock_revision_feedback(problem_json: dict, payload: dict) -> dict:
+    """
+    演示 / Mock 模式下，给“指出修复点后再次提交”一个可验证的稳定结果，
+    避免未配真实 LLM 时前端看起来按钮可点、结果却完全不变。
+    """
+    if not isinstance(problem_json, dict):
+        return problem_json
+    notes = str((payload or {}).get('revision_notes') or '').strip()
+    if not notes:
+        return problem_json
+    revised = json.loads(json.dumps(problem_json, ensure_ascii=False))
+    original_title = str(revised.get('title') or 'AI 生成题目').strip()
+    if '修订' not in original_title and '修正' not in original_title:
+        revised['title'] = f'{original_title}（修订版）'
+    difficulty = int(revised.get('difficulty') or 5)
+    if ('简单' in notes) or ('降低难度' in notes):
+        revised['difficulty'] = max(1, min(difficulty, 3))
+    elif ('困难' in notes) or ('提高难度' in notes) or ('增大难度' in notes):
+        revised['difficulty'] = min(10, max(difficulty, 8))
+    desc = str(revised.get('description') or '').rstrip()
+    revised['description'] = (
+        f'{desc}\n\n'
+        f'【修订说明】\n'
+        f'本题已根据以下反馈重新整理：{notes}\n'
+        f'请答辩时说明这是“基于修复点再次提交”的版本。'
+    )
+    cases = list(revised.get('test_cases') or [])
+    if cases and any(k in notes for k in ('样例', '测试点', '数据规模', '边界', '规模', '覆盖')):
+        base_case = dict(cases[-1])
+        extra_cases = []
+        for _ in range(3):
+            c = dict(base_case)
+            c['visibility'] = 'hidden'
+            c['score'] = max(int(c.get('score') or 20), 20)
+            extra_cases.append(c)
+        revised['test_cases'] = cases + extra_cases
+    tags = [str(t) for t in (revised.get('tags') or []) if str(t).strip()]
+    if '修订版' not in tags:
+        tags.append('修订版')
+    revised['tags'] = tags[:8]
+    cg = dict(revised.get('_case_generation') or {})
+    old_summary = str(cg.get('script_summary') or '').strip()
+    cg['revision_notes'] = notes
+    cg['script_summary'] = (old_summary + '；' if old_summary else '') + '本轮为按反馈修订后的再次生成'
+    cg['last_revision_at'] = _now_ms()
+    revised['_case_generation'] = cg
+    revised['_revision_feedback'] = {
+        'notes': notes,
+        'mode': 'mock',
+        'updated_at': _now_ms(),
+    }
+    return revised
 
 
 def _validate_final_problem_json(j: dict) -> Tuple[bool, str]:
@@ -2744,6 +2818,8 @@ def _run_generation_logic(payload, task_uuid, sse_q, user_id):
                               currency=mc.currency, user_id=user_id,
                               status='error', error_msg=reason, started_at=started_ms, finished_at=_now_ms())
                 return
+            if payload.get('revision_notes') and isinstance(payload.get('base_problem_json'), dict) and mc.mock_mode:
+                j = _apply_mock_revision_feedback(payload.get('base_problem_json') or j, payload)
             last_ok_json = j
             ok, reason = _validate_final_problem_json(j)
             if ok:
@@ -2775,6 +2851,12 @@ def _run_generation_logic(payload, task_uuid, sse_q, user_id):
         push('cases', generated_cases_info)
         push('token', {'input_tokens': total_in, 'output_tokens': total_out,
                        'cost_cny': engine.count_cost(total_in, total_out)})
+        if payload.get('revision_notes'):
+            final_result['_revision_feedback'] = {
+                'notes': str(payload.get('revision_notes') or '').strip(),
+                'based_on_title': str((payload.get('base_problem_json') or {}).get('title') or ''),
+                'updated_at': _now_ms(),
+            }
 
         push('step', {'index': 4, 'total': 5, 'title': '校验', 'text': '格式/样例/标程 一致性最终校验'})
         push('draft', {'version': attempt+10, 'html_preview': _preview_html_from_json(final_result)})
@@ -3914,7 +3996,7 @@ async def api_ai_review_run(submission_id: int, request: Request, viewer=None):
 
 
 @app.get('/api/ai/submissions/{submission_id}/review')
-@require_login(allow_admin_only=False)
+@require_login(allow_admin_only=True)
 async def api_ai_review_get(submission_id: int, request: Request, viewer=None):
     with _ai_conn() as c:
         r = c.execute('''SELECT r.*, s.user_id AS owner_user_id
@@ -3926,20 +4008,15 @@ async def api_ai_review_get(submission_id: int, request: Request, viewer=None):
     if not r:
         return _api_response(200, 'none', {'exists': False, 'overall': None, 'level': None})
     r = dict(r)
-    is_admin = viewer.role == USER_ROLE_ADMIN
-    is_self = str(r.get('owner_user_id') or '') == str(getattr(viewer, 'user_id', ''))
-    show_report = is_admin or is_self
     data = {
         'exists': True,
         'overall': r['overall_score'],
         'level': r['level'],
         'created_at': r['created_at'],
+        'report_html': r['report_html'],
     }
-    if show_report:
-        if is_admin:
-            data['report_html'] = r['report_html']
-            try: data['scores'] = json.loads(r['scores_json'])
-            except Exception: data['scores'] = {}
+    try: data['scores'] = json.loads(r['scores_json'])
+    except Exception: data['scores'] = {}
     return _api_response(200,'ok', data)
 
 
