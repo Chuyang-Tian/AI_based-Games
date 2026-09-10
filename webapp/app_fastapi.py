@@ -96,7 +96,7 @@ from userdb import (
     INITIAL_ADMIN_PASSWORD,
 )
 
-_OJ_VERSION = 'v1.5'
+_OJ_VERSION = 'v1.6'
 app = FastAPI(title=f'OJ Debug Platform {_OJ_VERSION}', version=_OJ_VERSION)
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -1185,6 +1185,7 @@ async def api_submissions_list(request: Request):
             viewer=user,
             viewer_is_admin=is_admin,
         )
+        subs = _ai_attach_level(subs, user)
     except ValueError as e:
         msg = str(e)
         if msg.startswith("400 "):
@@ -2943,6 +2944,268 @@ def _augment_line_array_cases(problem_json: dict, verified_cases: list, wanted_c
     return public_cases + stress_cases
 
 
+def _case_generation_context(problem_json: dict, payload: dict) -> dict:
+    text_parts = [
+        str(problem_json.get('title') or ''),
+        str(problem_json.get('description') or ''),
+        str(problem_json.get('constraints') or ''),
+        ' '.join(map(str, problem_json.get('tags') or [])),
+        str(payload.get('topic') or ''),
+        str(payload.get('requirement_notes') or ''),
+        str(payload.get('style_custom') or ''),
+    ]
+    blob = '\n'.join(text_parts)
+    blob_lower = blob.lower()
+    n_upper = _parse_constraint_upper_bound(blob, 'N') or 0
+    m_upper = _parse_constraint_upper_bound(blob, 'M') or 0
+    q_upper = _parse_constraint_upper_bound(blob, 'Q') or 0
+    l_upper = _parse_constraint_upper_bound(blob, 'L') or 0
+    return {
+        'blob': blob,
+        'blob_lower': blob_lower,
+        'n_upper': int(n_upper or 0),
+        'm_upper': int(m_upper or 0),
+        'q_upper': int(q_upper or 0),
+        'l_upper': int(l_upper or 0),
+    }
+
+
+def _build_case_generator_script(problem_json: dict, payload: dict, wanted_case_count: int) -> str:
+    ctx = _case_generation_context(problem_json, payload)
+    blob = ctx['blob']
+    blob_lower = ctx['blob_lower']
+    n_upper = ctx['n_upper']
+    m_upper = ctx['m_upper']
+    q_upper = ctx['q_upper']
+    tags = ' '.join(map(str, problem_json.get('tags') or []))
+    topic = str(payload.get('topic') or '')
+    if any(k in blob for k in ('图书馆', '预约', '入场')) or any(k in blob_lower for k in ('set', 'dict', 'hash')) or any(k in tags for k in ('集合', '字典')):
+        hidden_n = max(5000, min(max(n_upper or 20000, 20000), 60000))
+        hidden_m = max(8000, min(max(m_upper or hidden_n * 2, hidden_n * 2), 120000))
+        public_n = max(16, min(40, hidden_n // 500))
+        public_m = max(24, min(72, hidden_m // 500))
+        return f'''import os
+import random
+
+random.seed(42)
+N_CASES = {wanted_case_count}
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def write_case(idx, allowed_ids, requests):
+    with open(os.path.join(BASE_DIR, f"case_{{idx:03d}}.in"), "w", encoding="utf-8") as f:
+        f.write(f"{{len(allowed_ids)}} {{len(requests)}}\\n")
+        f.write(" ".join(map(str, allowed_ids)) + "\\n")
+        f.write(" ".join(map(str, requests)) + "\\n")
+
+def make_requests(allowed_ids, total_q, rng):
+    reqs = []
+    entered = []
+    allowed_list = list(allowed_ids)
+    base = allowed_list[0] if allowed_list else 1000000
+    for i in range(total_q):
+        mode = i % 6
+        if mode in (0, 1, 2):
+            x = allowed_list[(i * 17 + 7) % len(allowed_list)]
+            reqs.append(x)
+            entered.append(x)
+        elif mode == 3 and entered:
+            reqs.append(entered[rng.randrange(len(entered))])
+        else:
+            reqs.append(base + len(allowed_list) + 100 + i * 3)
+    return reqs
+
+small_allowed = [1001, 1002, 1003]
+small_requests = [1001, 1002, 1001, 9999]
+write_case(0, small_allowed, small_requests)
+print("CASE0: n=3 m=4 public-small")
+
+rng = random.Random(123)
+public_allowed = [500000 + i * 7 for i in range({public_n})]
+public_requests = make_requests(public_allowed, {public_m}, rng)
+write_case(1, public_allowed, public_requests)
+print("CASE1: n={public_n} m={public_m} public-large")
+
+for i in range(2, N_CASES):
+    scale_n = {hidden_n}
+    scale_m = {hidden_m}
+    if i % 3 == 0:
+        scale_n = max({public_n} * 4, {hidden_n} // 2)
+        scale_m = max({public_m} * 6, {hidden_m} // 2)
+    elif i % 3 == 1:
+        scale_n = {hidden_n}
+        scale_m = {hidden_m}
+    else:
+        scale_n = min({hidden_n} + 5000, {hidden_n} * 2)
+        scale_m = min({hidden_m} + 10000, {hidden_m} * 2)
+    rng = random.Random(1000 + i)
+    start = 10**7 + i * 10**6
+    allowed = [start + j * 2 for j in range(scale_n)]
+    requests = make_requests(allowed, scale_m, rng)
+    write_case(i, allowed, requests)
+    print(f"CASE{{i}}: n={{scale_n}} m={{scale_m}}")
+'''
+    if '前缀和' in blob or 'prefix' in blob_lower or '区间查询' in blob or any(k in topic for k in ('前缀和', '区间')):
+        hidden_n = max(5000, min(max(n_upper or 30000, 30000), 100000))
+        hidden_q = max(5000, min(max(q_upper or m_upper or 40000, 40000), 100000))
+        public_n = max(24, min(96, hidden_n // 400))
+        public_q = max(24, min(120, hidden_q // 400))
+        return f'''import os
+import random
+
+random.seed(42)
+N_CASES = {wanted_case_count}
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def write_case(idx, arr, queries):
+    with open(os.path.join(BASE_DIR, f"case_{{idx:03d}}.in"), "w", encoding="utf-8") as f:
+        f.write(f"{{len(arr)}} {{len(queries)}}\\n")
+        f.write(" ".join(map(str, arr)) + "\\n")
+        for l, r in queries:
+            f.write(f"{{l}} {{r}}\\n")
+
+small_arr = [3, 1, 4, 1, 5]
+small_queries = [(1, 3), (2, 5), (4, 4)]
+write_case(0, small_arr, small_queries)
+print("CASE0: n=5 q=3 public-small")
+
+rng = random.Random(123)
+arr = [rng.randint(1, 10**4) for _ in range({public_n})]
+queries = []
+for i in range({public_q}):
+    l = rng.randint(1, len(arr))
+    r = rng.randint(l, len(arr))
+    queries.append((l, r))
+write_case(1, arr, queries)
+print("CASE1: n={public_n} q={public_q} public-large")
+
+for i in range(2, N_CASES):
+    rng = random.Random(1000 + i)
+    n = {hidden_n} if i % 2 else max({public_n} * 5, {hidden_n} // 2)
+    q = {hidden_q} if i % 2 else max({public_q} * 6, {hidden_q} // 2)
+    arr = [rng.randint(1, 10**9) for _ in range(n)]
+    queries = []
+    for _ in range(q):
+        l = rng.randint(1, n)
+        r = rng.randint(l, n)
+        queries.append((l, r))
+    write_case(i, arr, queries)
+    print(f"CASE{{i}}: n={{n}} q={{q}}")
+'''
+    if any(k in blob for k in ('asyncio', '评测任务', '最大并发数', '完成时间')) or '优先队列' in blob or '任务调度' in blob:
+        hidden_n = max(4000, min(max(n_upper or 20000, 20000), 100000))
+        hidden_k = max(2, min(max(ctx['l_upper'] or 8, 8), 256))
+        public_n = max(12, min(48, hidden_n // 500))
+        public_k = max(2, min(8, hidden_k))
+        return f'''import os
+import random
+
+random.seed(42)
+N_CASES = {wanted_case_count}
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def write_case(idx, jobs, k):
+    with open(os.path.join(BASE_DIR, f"case_{{idx:03d}}.in"), "w", encoding="utf-8") as f:
+        f.write(f"{{len(jobs)}} {{k}}\\n")
+        for arrive, duration in jobs:
+            f.write(f"{{arrive}} {{duration}}\\n")
+
+small_jobs = [(0, 3), (1, 2), (2, 4), (4, 1)]
+write_case(0, small_jobs, 2)
+print("CASE0: n=4 k=2 public-small")
+
+rng = random.Random(123)
+jobs = []
+t = 0
+for _ in range({public_n}):
+    t += rng.randint(0, 3)
+    jobs.append((t, rng.randint(1, 9)))
+write_case(1, jobs, {public_k})
+print("CASE1: n={public_n} k={public_k} public-large")
+
+for i in range(2, N_CASES):
+    rng = random.Random(1000 + i)
+    n = {hidden_n} if i % 2 else max({public_n} * 5, {hidden_n} // 2)
+    k = min({hidden_k}, max(2, {public_k} + i % 5))
+    jobs = []
+    t = 0
+    for _ in range(n):
+        t += rng.randint(0, 2)
+        jobs.append((t, rng.randint(1, 50)))
+    write_case(i, jobs, k)
+    print(f"CASE{{i}}: n={{n}} k={{k}}")
+'''
+    if any(k in blob for k in ('线程', '并发线程数', '扫描线', '左闭右开', '开始时间', '结束时间')) or '并发统计' in blob:
+        hidden_n = max(4000, min(max(n_upper or 30000, 30000), 100000))
+        public_n = max(12, min(48, hidden_n // 600))
+        return f'''import os
+import random
+
+random.seed(42)
+N_CASES = {wanted_case_count}
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def write_case(idx, segs):
+    with open(os.path.join(BASE_DIR, f"case_{{idx:03d}}.in"), "w", encoding="utf-8") as f:
+        f.write(str(len(segs)) + "\\n")
+        for s, e in segs:
+            f.write(f"{{s}} {{e}}\\n")
+
+small = [(1, 4), (2, 5), (4, 7)]
+write_case(0, small)
+print("CASE0: n=3 public-small")
+
+rng = random.Random(123)
+segs = []
+for i in range({public_n}):
+    s = rng.randint(0, 80)
+    e = s + rng.randint(1, 20)
+    segs.append((s, e))
+write_case(1, segs)
+print("CASE1: n={public_n} public-large")
+
+for i in range(2, N_CASES):
+    rng = random.Random(1000 + i)
+    n = {hidden_n} if i % 2 else max({public_n} * 5, {hidden_n} // 2)
+    segs = []
+    current = 0
+    for _ in range(n):
+        current += rng.randint(0, 3)
+        s = current + rng.randint(0, 20)
+        e = s + rng.randint(1, 100)
+        segs.append((s, e))
+    write_case(i, segs)
+    print(f"CASE{{i}}: n={{n}}")
+'''
+    hidden_n = max(256, min(max(n_upper or 5000, 5000), 50000))
+    public_n = max(24, min(96, hidden_n // 100))
+    return f'''import os
+import random
+
+random.seed(42)
+N_CASES = {wanted_case_count}
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+
+def write_case(idx, arr):
+    with open(os.path.join(BASE_DIR, f"case_{{idx:03d}}.in"), "w", encoding="utf-8") as f:
+        f.write(str(len(arr)) + "\\n")
+        f.write(" ".join(map(str, arr)) + "\\n")
+
+write_case(0, [3, 1, 4, 1, 5])
+print("CASE0: n=5 public-small")
+
+rng = random.Random(123)
+write_case(1, [rng.randint(-10**6, 10**6) for _ in range({public_n})])
+print("CASE1: n={public_n} public-large")
+
+for i in range(2, N_CASES):
+    rng = random.Random(1000 + i)
+    n = {hidden_n} if i % 2 else max({public_n} * 6, {hidden_n} // 2)
+    arr = [rng.randint(-10**9, 10**9) for _ in range(n)]
+    write_case(i, arr)
+    print(f"CASE{{i}}: n={{n}}")
+'''
+
+
 def _generate_and_run_cases(problem_json, payload, task_uuid, push, engine, messages):
     """
     Task6：子模块2 - AI 写 generate_test.py → subprocess.run 真跑 → cases 数组回填。
@@ -2989,23 +3252,7 @@ def _generate_and_run_cases(problem_json, payload, task_uuid, push, engine, mess
     script_path = os.path.join(tmp_root, 'generate_test.py')
     solution_path = os.path.join(tmp_root, 'solution.py')
     wanted_case_count = max(4, min(20, int(payload.get('sample_count') or len(cases) or 10)))
-    script_code = f'''import random, sys, os
-random.seed(42)
-N_CASES = {wanted_case_count}
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-
-def _rand_int_list(n, lo=-10**9, hi=10**9):
-    return [random.randint(lo, hi) for _ in range(n)]
-
-for i in range(N_CASES):
-    n = random.randint(1, {max(20, wanted_case_count * 25)})
-    arr = _rand_int_list(n, -1000000, 1000000)
-    in_file = os.path.join(BASE_DIR, f"case_{{i:03d}}.in")
-    with open(in_file, "w", encoding="utf-8") as f:
-        f.write(str(n) + "\\\\n")
-        f.write(" ".join(map(str, arr)) + "\\\\n")
-    print(f"CASE{{i}}: N={{n}}")
-'''
+    script_code = _build_case_generator_script(problem_json, payload, wanted_case_count)
     try:
         with open(script_path,'w',encoding='utf-8') as f: f.write(script_code)
         with open(solution_path,'w',encoding='utf-8') as f:
@@ -3564,57 +3811,68 @@ async def api_ai_review_run(submission_id: int, request: Request, viewer=None):
     try: data = await request.json()
     except Exception: data = {}
     with _ai_conn() as c:
-        sub = c.execute('SELECT * FROM submissions WHERE id=?', (int(submission_id),)).fetchone()
+        sub = c.execute('SELECT * FROM submissions WHERE submission_id=?', (int(submission_id),)).fetchone()
     if not sub:
         return _api_response(404, 'submission 不存在')
-    src = sub.get('source_code') or ''
+    sub = dict(sub)
+    src = sub.get('code') or ''
     problem_id = sub.get('problem_id')
     uid = sub.get('user_id')
-    runtime_ms = None
-    memory_mb = None
-    try:
-        j = sub.get('result_json') or '{}'
-        if isinstance(j, str): j = json.loads(j)
-        cr = (j.get('case_results') or [])
-        if cr:
-            runtime_ms = sum(float(x.get('time_ms') or 0) for x in cr) / max(1, len(cr))
-            memory_mb = sum(float(x.get('memory_mb') or 0) for x in cr) / max(1, len(cr))
-    except Exception: pass
+    runtime_ms = float(sub.get('total_time_ms') or 0) or None
+    memory_mb = float(sub.get('max_memory_mb') or 0) or None
     with _ai_conn() as c:
         same_prob_rows = c.execute(
-            'SELECT source_code, user_id FROM submissions WHERE problem_id=? AND id!=? AND source_code IS NOT NULL LIMIT 200',
+            '''SELECT code, user_id FROM submissions
+               WHERE problem_id=? AND submission_id!=? AND code IS NOT NULL LIMIT 200''',
             (problem_id, int(submission_id))
         ).fetchall()
-        peers = [(r['source_code'] or '') for r in same_prob_rows if r['source_code']]
-        peer_runs = c.execute('''SELECT result_json FROM submissions WHERE problem_id=? AND id!=? AND result_json IS NOT NULL LIMIT 200''',
+        peers = [(r['code'] or '') for r in same_prob_rows if r['code']]
+        peer_runs = c.execute('''SELECT total_time_ms, max_memory_mb FROM submissions
+                                 WHERE problem_id=? AND submission_id!=?
+                                   AND (total_time_ms IS NOT NULL OR max_memory_mb IS NOT NULL)
+                                 LIMIT 200''',
                               (problem_id, int(submission_id))).fetchall()
     peer_rts = []; peer_mems = []
     for pr in peer_runs:
         try:
-            j = pr['result_json']
-            if isinstance(j,str): j = json.loads(j)
-            cr = j.get('case_results') or []
-            if cr:
-                peer_rts.append(sum(float(x.get('time_ms') or 0) for x in cr)/len(cr))
-                peer_mems.append(sum(float(x.get('memory_mb') or 0) for x in cr)/len(cr))
+            rt = float(pr['total_time_ms'] or 0)
+            mem = float(pr['max_memory_mb'] or 0)
+            if rt > 0:
+                peer_rts.append(rt)
+            if mem > 0:
+                peer_mems.append(mem)
         except Exception: pass
     avg_rt = sum(peer_rts)/len(peer_rts) if peer_rts else None
     avg_mem = sum(peer_mems)/len(peer_mems) if peer_mems else None
     # 历史提交模式
     with _ai_conn() as c:
         recent = c.execute(
-            'SELECT id,status,created_at FROM submissions WHERE user_id=? ORDER BY id DESC LIMIT 12',
+            '''SELECT submission_id, status, created_at, problem_id
+               FROM submissions WHERE user_id=? ORDER BY submission_id DESC LIMIT 12''',
             (uid,)
         ).fetchall()
     recent_js = [dict(r) for r in recent]
-    times_asc = sorted([int(r.get('created_at') or r.get('id') or 0) for r in recent if r.get('user_id', uid) == uid])
+    times_asc = []
+    for r in recent_js:
+        raw_created_at = r.get('created_at')
+        ts_value = 0
+        if isinstance(raw_created_at, str) and raw_created_at.strip():
+            try:
+                ts_value = int(time.mktime(time.strptime(raw_created_at.strip(), '%Y-%m-%d %H:%M:%S')) * 1000)
+            except Exception:
+                ts_value = 0
+        if not ts_value:
+            ts_value = int(r.get('submission_id') or 0)
+        if ts_value > 0:
+            times_asc.append(ts_value)
+    times_asc = sorted(times_asc)
     intervals = []
     for i in range(1, len(times_asc)):
         dt = (times_asc[i] - times_asc[i-1])
         if dt > 0: intervals.append(dt/1000.0)
     one_shot = True
-    for r in recent:
-        if int(r.get('id') or 0) < int(submission_id) and (r.get('problem_id') or problem_id) == problem_id:
+    for r in recent_js:
+        if int(r.get('submission_id') or 0) < int(submission_id) and (r.get('problem_id') or problem_id) == problem_id:
             one_shot = False; break
     result = _anti_cheat.evaluate(
         source=src, other_sources=peers, one_shot_ac=one_shot,
@@ -3623,13 +3881,19 @@ async def api_ai_review_run(submission_id: int, request: Request, viewer=None):
         peers_avg_runtime_ms=avg_rt, peers_avg_memory_mb=avg_mem,
     )
     problem_title = ''
+    username = str(uid)
     try:
         with _ai_conn() as c:
             pr = c.execute('SELECT title FROM problems WHERE id=?', (problem_id,)).fetchone()
             problem_title = pr['title'] if pr else ''
+            ur = c.execute('SELECT username FROM users WHERE user_id=?', (uid,)).fetchone()
+            if ur:
+                ur = dict(ur)
+                if ur.get('username'):
+                    username = str(ur['username'])
     except Exception: pass
     report_html = _anti_cheat.build_report_html(result, submission_id=int(submission_id),
-                                                username=str(uid), problem_title=problem_title)
+                                                username=username, problem_title=problem_title)
     now = _now_ms()
     scores_json = json.dumps(result.to_json(), ensure_ascii=False)
     with _ai_conn() as c:
@@ -3653,12 +3917,17 @@ async def api_ai_review_run(submission_id: int, request: Request, viewer=None):
 @require_login(allow_admin_only=False)
 async def api_ai_review_get(submission_id: int, request: Request, viewer=None):
     with _ai_conn() as c:
-        r = c.execute('SELECT * FROM ai_reviews WHERE submission_id=? ORDER BY id DESC LIMIT 1',
+        r = c.execute('''SELECT r.*, s.user_id AS owner_user_id
+                         FROM ai_reviews r
+                         LEFT JOIN submissions s ON s.submission_id = r.submission_id
+                         WHERE r.submission_id=?
+                         ORDER BY r.id DESC LIMIT 1''',
                       (int(submission_id),)).fetchone()
     if not r:
         return _api_response(200, 'none', {'exists': False, 'overall': None, 'level': None})
+    r = dict(r)
     is_admin = viewer.role == USER_ROLE_ADMIN
-    is_self = str(r.get('user_id') or '') == str(getattr(viewer,'user_id',''))
+    is_self = str(r.get('owner_user_id') or '') == str(getattr(viewer, 'user_id', ''))
     show_report = is_admin or is_self
     data = {
         'exists': True,
@@ -3680,7 +3949,7 @@ def _ai_attach_level(submission_rows, viewer):
     if not (viewer and viewer.role == USER_ROLE_ADMIN):
         return submission_rows
     try:
-        ids = [int(r['id']) for r in submission_rows if isinstance(r, dict) and r.get('id')]
+        ids = [int(r['submission_id']) for r in submission_rows if isinstance(r, dict) and r.get('submission_id')]
     except Exception:
         return submission_rows
     if not ids: return submission_rows
@@ -3692,7 +3961,7 @@ def _ai_attach_level(submission_rows, viewer):
     lvl_map = {int(r['submission_id']): (r['level'], int(r['overall_score'])) for r in rows}
     for r in submission_rows:
         if isinstance(r, dict):
-            k = int(r.get('id') or -1)
+            k = int(r.get('submission_id') or -1)
             if k in lvl_map:
                 r['ai_level'], r['ai_overall'] = lvl_map[k]
             else:

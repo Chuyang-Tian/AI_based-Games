@@ -53,6 +53,7 @@ _smoke_*.py
 
 # ---- 本地 IDE / 沙箱产物 ----
 .trae/
+.dbg/
 .idea/
 .vscode/
 *.swp

@@ -21,7 +21,7 @@ import sys
 import pandas as pd
 import streamlit as st
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from common import api, current_user, ensure_init, get_locale, get_query_param, render_home_button, render_subheader, render_topbar, require_login_error, tr
+from common import api, current_user, ensure_init, get_locale, get_query_param, is_admin, render_home_button, render_subheader, render_topbar, require_login_error, tr
 st.set_page_config(page_title='提交详情 · OJ', page_icon='🧾', layout='wide', initial_sidebar_state='collapsed')
 ensure_init()
 render_topbar(tr('page_submission_detail', '独立提交详情页'))
@@ -44,6 +44,10 @@ detail_code, detail_data, detail_err = api('GET', f'/api/submissions/{sid}')
 detail = detail_data.get('data') if detail_code == 200 and isinstance(detail_data, dict) else None
 log_code, log_data, log_err = api('GET', f'/api/submissions/{sid}/log')
 log_detail = log_data.get('data') if log_code == 200 and isinstance(log_data, dict) else None
+review_payload = {}
+if is_admin():
+    review_code, review_data, review_err = api('GET', f'/api/ai/submissions/{sid}/review')
+    review_payload = review_data.get('data') if review_code == 200 and isinstance(review_data, dict) else {}
 if not detail:
     st.error(t(f"详情加载失败：{(detail_data.get('msg') if isinstance(detail_data, dict) else detail_err)}", f"Failed to load submission detail: {(detail_data.get('msg') if isinstance(detail_data, dict) else detail_err)}"))
     render_home_button()
@@ -60,7 +64,10 @@ with st.container(border=True):
     m2.metric(t('得分', 'Score'), detail.get('score'))
     m3.metric(t('总分', 'Total'), detail.get('counts'))
     m4.metric(t('提交时间', 'Submitted At'), detail.get('created_at') or detail.get('submit_time') or '-')
-tabs = st.tabs([t('测试点详情', 'Testcase Details'), t('编译与运行', 'Compile & Run'), t('基础信息', 'Basic Info')])
+tab_labels = [t('测试点详情', 'Testcase Details'), t('编译与运行', 'Compile & Run'), t('基础信息', 'Basic Info')]
+if is_admin():
+    tab_labels.append(t('反AI审查', 'Anti-AI Review'))
+tabs = st.tabs(tab_labels)
 with tabs[0]:
     details = (log_detail or {}).get('details') or []
     if details:
@@ -89,3 +96,39 @@ with tabs[1]:
 with tabs[2]:
     info = {'submission_id': detail.get('submission_id'), 'problem_id': detail.get('problem_id'), 'user_id': detail.get('user_id'), 'status': detail.get('status'), 'score': detail.get('score'), 'counts': detail.get('counts'), 'language': detail.get('language')}
     st.json(info, expanded=True)
+if is_admin():
+    with tabs[3]:
+        st.caption('该功能仅对管理员开放，用于辅助识别 AI 生成、异常提交模式、代码高相似度与异常性能表现。审查结果仅供参考，不会自动判定作弊。')
+        action_col, status_col = st.columns([1.4, 4])
+        with action_col:
+            if st.button('立即运行反AI审查', type='primary', use_container_width=True):
+                run_code, run_data, run_err = api('POST', f'/api/ai/submissions/{sid}/review', {})
+                if run_code == 200 and isinstance(run_data, dict):
+                    review_payload = run_data.get('data') or {}
+                    st.success('反AI审查已完成。')
+                else:
+                    st.error(f"审查失败：{run_data.get('msg') if isinstance(run_data, dict) else run_err}")
+        with status_col:
+            if review_payload.get('exists') or review_payload.get('report_html'):
+                level = str(review_payload.get('level') or '').lower()
+                overall = review_payload.get('overall')
+                level_text = {'high': '🔴 高风险', 'mid': '🟡 中风险', 'low': '🟢 低风险'}.get(level, '未审查')
+                st.info(f'当前最新结论：{level_text}，综合分 {overall if overall is not None else "-"}。')
+            else:
+                st.info('当前还没有这条提交的反AI审查结果。')
+        scores = review_payload.get('scores') or {}
+        if scores:
+            r1, r2, r3 = st.columns(3)
+            r1.metric('综合分', scores.get('overall'))
+            r2.metric('风险等级', {'high': '高', 'mid': '中', 'low': '低'}.get(str(scores.get('level') or '').lower(), '-'))
+            r3.metric('AI生成概率', scores.get('s1'))
+            r4, r5, r6, r7 = st.columns(4)
+            r4.metric('代码重复率', scores.get('s2'))
+            r5.metric('提交模式', scores.get('s3'))
+            r6.metric('性能异常', scores.get('s4'))
+            r7.metric('账号元数据', scores.get('s5'))
+            with st.expander('查看五维原始明细', expanded=False):
+                st.json(scores, expanded=True)
+        report_html = review_payload.get('report_html')
+        if report_html:
+            st.markdown(report_html, unsafe_allow_html=True)

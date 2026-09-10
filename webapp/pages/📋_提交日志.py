@@ -59,6 +59,18 @@ filters = st.session_state.get('submission_filters', {
     'page_size': 20,
 })
 
+
+def format_ai_level(level, overall):
+    level = str(level or '').lower()
+    overall_text = '-' if overall in (None, '') else str(overall)
+    if level == 'high':
+        return f'🔴 高风险（{overall_text}）'
+    if level == 'mid':
+        return f'🟡 中风险（{overall_text}）'
+    if level == 'low':
+        return f'🟢 低风险（{overall_text}）'
+    return '未审查'
+
 with st.container(border=True):
     st.subheader('筛选条件')
     with st.form('submission_filter_form'):
@@ -114,6 +126,7 @@ for item in submissions or []:
         '状态': item.get('status', ''),
         '得分': item.get('score'),
         '总分': item.get('counts'),
+        **({'AI 风险': format_ai_level(item.get('ai_level'), item.get('ai_overall'))} if is_admin() else {}),
     })
 
 with st.container(border=True):
@@ -131,7 +144,10 @@ with st.container(border=True):
                 left, mid, right = st.columns([6, 2, 2])
                 with left:
                     st.markdown(f"**提交 #{row['提交 ID']} · {row['题目 ID']} · {row['题目标题']}**")
-                    st.caption(f"状态: {row['状态']}  |  得分: {row['得分']} / {row['总分']}")
+                    caption_parts = [f"状态: {row['状态']}", f"得分: {row['得分']} / {row['总分']}"]
+                    if is_admin():
+                        caption_parts.append(f"反AI审查: {row.get('AI 风险', '未审查')}")
+                    st.caption('  |  '.join(caption_parts))
                 with mid:
                     render_page_link('查看题目', page_url('problem_detail', id=row['题目 ID']))
                 with right:
