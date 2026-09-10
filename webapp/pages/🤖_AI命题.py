@@ -124,26 +124,52 @@ def render_task_status():
     task = status_data['data']
     last_payload = task.get('last_payload') or {}
     status = task.get('status') or 'running'
+    last_event = task.get('last_event') or ''
+    event_label = {
+        'start': '启动任务',
+        'step': '执行阶段',
+        'draft': '草稿已生成',
+        'cases': '样例与测试点',
+        'token': 'Token 统计',
+        'retried': '自动重试',
+        'complete': '生成完成',
+        'error': '生成失败',
+        'cancelled': '任务已取消',
+    }.get(last_event, '等待中')
     cols = st.columns(4)
     cols[0].metric('任务 ID', task_id[:8])
     cols[1].metric('当前状态', status)
-    cols[2].metric('最后事件', task.get('last_event') or '-')
+    cols[2].metric('当前阶段', event_label)
     cols[3].metric('完成时间', task.get('finished_at') or '-')
-    event_text = {'start': '任务已创建，正在准备参数', 'step': '正在执行当前阶段', 'draft': '已经拿到题目草稿', 'cases': '正在生成并校验样例', 'token': '模型已返回一部分内容', 'retried': '正在自动重试', 'complete': '生成完成', 'error': '生成失败'}.get(task.get('last_event') or '', '等待中')
+    event_text = {
+        'start': '任务已创建，正在准备参数',
+        'step': '正在执行当前阶段',
+        'draft': '已经拿到题目草稿',
+        'cases': '正在生成并校验样例',
+        'token': '模型已返回一部分内容',
+        'retried': '正在自动重试',
+        'complete': '生成完成',
+        'error': '生成失败',
+        'cancelled': '任务已取消',
+    }.get(last_event, '等待中')
     st.info(f'当前进度：{event_text}')
-    if task.get('last_event') == 'step':
+    if last_event == 'step':
         step_index = int(last_payload.get('index', 0) or 0)
         step_total = int(last_payload.get('total', 5) or 5)
         st.progress(min(step_index / max(step_total, 1), 1.0))
-        st.caption(f"{last_payload.get('title', '')}：{last_payload.get('text', '')}")
-    elif task.get('last_event') == 'cases':
+        step_title = str(last_payload.get('title') or f'阶段 {step_index}/{step_total}')
+        step_text = str(last_payload.get('text') or '')
+        st.caption(f"当前进行步骤：第 {step_index}/{step_total} 步 · {step_title}")
+        if step_text:
+            st.write(step_text)
+    elif last_event == 'cases':
         st.success(str(last_payload.get('summary') or '样例脚本已运行完成'))
         st.caption(str(last_payload.get('script_stdout') or ''))
-    elif task.get('last_event') == 'token':
+    elif last_event == 'token':
         st.caption(f"已消耗输入 {last_payload.get('input_tokens', 0)} tokens，输出 {last_payload.get('output_tokens', 0)} tokens。")
-    elif task.get('last_event') == 'retried':
+    elif last_event == 'retried':
         st.warning(f"自动重试中：{last_payload.get('reason', '')}")
-    elif task.get('last_event') == 'error':
+    elif last_event == 'error':
         st.error(task.get('error_message') or last_payload.get('message') or '任务失败')
     if task.get('html_preview'):
         st.caption('当前草稿预览')
@@ -228,9 +254,9 @@ with st.container(border=True):
                     'generate_test.py（样例脚本原始代码）',
                     value=default_script,
                     height=340,
-                    language='python',
                     key='ai_case_script_editor',
                 )
+                st.caption('脚本语言：Python（Streamlit 当前文本框不支持代码高亮编辑）')
                 stdout_prev = str(case_gen_meta.get('script_stdout') or '')
                 st.text_area('上次运行 stdout / stderr 日志', value=stdout_prev or '（暂无日志）',
                              height=140, key='ai_case_script_stdout_prev')
